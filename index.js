@@ -91,6 +91,16 @@ const CSS_COMMON = `
     .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(0, 113, 227, 0.2); }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+    .watch-table-icon { width: 28px; height: 28px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border); background: rgba(120,120,120,0.05); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
+    .watch-table-name { font-weight: 700; color: var(--text); }
+    .watch-table-sub { font-size: 12px; color: var(--text-sec); margin-top: 4px; }
+    .watch-countdown { font-size: 14px; font-weight: 800; }
+    .watch-countdown-danger { color: #ff3b30; }
+    .watch-countdown-warning { color: #ff9500; }
+    .watch-countdown-safe { color: #34c759; }
+    .watch-edit-input { width: 92px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
+    .watch-save-btn { padding: 8px 12px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .watch-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .emby-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 14px; transition: 0.3s; position: relative; }
     .emby-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.06); transform: translateY(-2px); }
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
@@ -282,6 +292,34 @@ const HTML_UI = `
             </div>
 
             <div id="tab-proxy" class="tab-panel active">
+            
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; font-size:18px;">保号检测面板</h2>
+                            <div style="margin-top:6px; font-size:13px; color: var(--text-sec);">按每个节点的观看报告天数与上次真实观看时间，计算距离下次凌晨 0 点 检测还剩多久。</div>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 72px;">图标</th>
+                                    <th>名字</th>
+                                    <th>观看报告</th>
+                                    <th>保号天数</th>
+                                    <th>上次观看</th>
+                                    <th>预计检测</th>
+                                    <th>保号倒计时</th>
+                                </tr>
+                            </thead>
+                            <tbody id="watch-report-grid">
+                                <tr><td colspan="7" style="text-align:center; color:var(--text-sec); padding: 20px;">读取数据中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0; font-size:18px;">已反代的媒体库</h2>
@@ -332,6 +370,7 @@ const HTML_UI = `
                             <option value="dual">兼容 (双重透传)</option>
                             <option value="strict">强力 (防403)</option>
                         </select>
+                        <input type="number" id="watchReport" min="0" step="1" placeholder="观看报告天数 (0=无需保号)" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background:var(--card); flex: 1;">
                     </div>
 
                     <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
@@ -798,6 +837,137 @@ const HTML_UI = `
             });
         }
 
+        function parseWatchReportDays(value) {
+            const days = parseInt(value, 10);
+            return Number.isFinite(days) && days > 0 ? days : 0;
+        }
+
+        function parseBeijingDateTime(dateTimeStr) {
+            if (!dateTimeStr) return null;
+            const normalized = dateTimeStr.replace(' ', 'T');
+            const parsed = new Date(normalized + '+08:00');
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        function formatCountdownText(diffMs) {
+            if (diffMs <= 0) return '0天 0小时';
+            const totalHours = Math.ceil(diffMs / 3600000);
+            const days = Math.floor(totalHours / 24);
+            const hours = totalHours % 24;
+            return days + '天 ' + hours + '小时';
+        }
+
+        function calcWatchReportStatus(route) {
+            const reportDays = parseWatchReportDays(route.watch_report);
+            if (reportDays === 0) {
+                return {
+                    modeText: '无需观看保号',
+                    countdownText: '无需检测',
+                    nextCheckText: '-',
+                    colorClass: 'watch-countdown-safe'
+                };
+            }
+
+            const lastPlayDate = parseBeijingDateTime(route.last_play);
+            if (!lastPlayDate) {
+                return {
+                    modeText: reportDays + ' 天检测',
+                    countdownText: '等待首播',
+                    nextCheckText: '-',
+                    colorClass: 'watch-countdown-warning'
+                };
+            }
+
+            const now = new Date();
+            const nextCheck = new Date(lastPlayDate.getTime());
+            nextCheck.setHours(24, 0, 0, 0);
+            nextCheck.setDate(nextCheck.getDate() + reportDays);
+            const diffMs = nextCheck.getTime() - now.getTime();
+            let colorClass = 'watch-countdown-safe';
+            if (diffMs <= 86400000) colorClass = 'watch-countdown-danger';
+            else if (diffMs <= 259200000) colorClass = 'watch-countdown-warning';
+
+            return {
+                modeText: reportDays + ' 天检测',
+                countdownText: formatCountdownText(diffMs),
+                nextCheckText: nextCheck.toLocaleString('zh-CN', { hour12: false }),
+                colorClass: colorClass
+            };
+        }
+
+        function renderWatchReportPanel(routes) {
+            const container = document.getElementById('watch-report-grid');
+            if (!container) return;
+            if (!routes || routes.length === 0) {
+                container.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-sec); padding: 20px;">暂无反代节点，无法计算保号检测。</td></tr>';
+                return;
+            }
+
+            container.innerHTML = routes.map(route => {
+                const remarkName = route.remark || '未命名媒体库';
+                const reportDays = parseWatchReportDays(route.watch_report);
+                const status = calcWatchReportStatus(route);
+                const iconHtml = route.icon ? '<img src="' + route.icon + '" class="watch-table-icon">' : '<span class="watch-table-icon">🎬</span>';
+                return \`
+                    <tr>
+                        <td data-label="图标">\${iconHtml}</td>
+                        <td data-label="名字">
+                            <div class="watch-table-name">\${remarkName}</div>
+                            <div class="watch-table-sub">/\${route.prefix}</div>
+                        </td>
+                        <td data-label="观看报告">
+                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportDays === 0 ? '默认 0' : ('0+' + reportDays)}</span>
+                        </td>
+                        <td data-label="保号天数">
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <input type="number" min="0" step="1" value="\${reportDays}" class="watch-edit-input" id="watch-inline-\${route.prefix}">
+                                <button type="button" class="watch-save-btn" onclick="saveWatchReportDays('\${route.prefix}', this)">保存</button>
+                            </div>
+                        </td>
+                        <td data-label="上次观看">\${route.last_play || '暂无播放记录'}</td>
+                        <td data-label="预计检测">\${status.nextCheckText}</td>
+                        <td data-label="保号倒计时"><span class="watch-countdown \${status.colorClass}">\${status.countdownText}</span><div class="watch-table-sub">\${status.modeText}</div></td>
+                    </tr>\`;
+            }).join('');
+        }
+
+        async function saveWatchReportDays(prefix, btn) {
+            const input = document.getElementById('watch-inline-' + prefix);
+            const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
+            if (!input || !route) return showToast('❌ 节点数据不存在，无法保存');
+
+            const watch_report = parseWatchReportDays(input.value);
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '保存中...';
+
+            try {
+                const res = await fetch('/api/routes', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        oldPrefix: route.prefix,
+                        prefix: route.prefix,
+                        target: route.target,
+                        mode: route.mode || 'off',
+                        remark: route.remark || '',
+                        icon: route.icon || '',
+                        last_play: route.last_play || '',
+                        watch_report,
+                        cache_img: route.cache_img || 'on'
+                    })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || '保存失败');
+                showToast('✅ 保号天数已更新');
+                await load();
+            } catch (err) {
+                showToast('❌ 保存失败: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
         function handleTargetInputs() {
             const container = document.getElementById('targetInputs');
             const inputs = container.querySelectorAll('.target-input');
@@ -902,6 +1072,7 @@ const HTML_UI = `
 
                 // 🌟 新增：把节点流量数据存进全局内存，供大屏瞬间读取！
                 window.globalRoutesData = data;
+                renderWatchReportPanel(data);
 
                 const container = document.getElementById('list-grid');
                 if(data.length === 0) {
@@ -1024,10 +1195,12 @@ const HTML_UI = `
         }
 
         function editNode(prefix, targetStr, mode, remark, icon, cacheImg) {
+            const routeData = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
             document.getElementById('oldPrefix').value = prefix;
             document.getElementById('remark').value = remark;
             document.getElementById('prefix').value = prefix;
             document.getElementById('mode').value = mode || 'off';
+            document.getElementById('watchReport').value = routeData ? parseWatchReportDays(routeData.watch_report) : 0;
             document.getElementById('nodeCache').checked = (cacheImg !== 'off');
             
             if (icon) {
@@ -1068,6 +1241,7 @@ const HTML_UI = `
             const prefix = document.getElementById('prefix').value.trim().replace(/^\\/+/g, '');
             const mode = document.getElementById('mode').value;
             const icon = document.getElementById('iconUrl').value;
+            const watch_report = parseWatchReportDays(document.getElementById('watchReport').value);
             const cache_img = document.getElementById('nodeCache').checked ? 'on' : 'off';
 
             const inputs = document.querySelectorAll('.target-input');
@@ -1083,7 +1257,7 @@ const HTML_UI = `
             try {
                 const res = await fetch('/api/routes', { 
                     method: 'POST', 
-                    body: JSON.stringify({oldPrefix, prefix, target, mode, remark, icon, cache_img})
+                    body: JSON.stringify({oldPrefix, prefix, target, mode, remark, icon, watch_report, cache_img})
                 });
                 const data = await res.json();
                 if(!data.success) throw new Error(data.error || '部署失败');
@@ -1091,6 +1265,7 @@ const HTML_UI = `
                 document.getElementById('addForm').reset();
                 document.getElementById('oldPrefix').value = ''; 
                 selectIcon('', '默认 🎬');
+                document.getElementById('watchReport').value = '';
                 document.getElementById('nodeCache').checked = true;
                 document.getElementById('submitBtn').textContent = '保存部署'; 
                 resetTargetInputs(); 
@@ -2617,8 +2792,8 @@ export default {
                 const routes = await request.json();
                 for (const r of routes) {
                     if (r.prefix && r.target) {
-                        await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-                            .bind(r.prefix, r.target, r.mode || 'off', r.remark || '', r.last_play || '', r.icon || '', r.cache_img || 'on', r.sort_order || 0).run();
+                        await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                            .bind(r.prefix, r.target, r.mode || 'off', r.remark || '', r.last_play || '', r.icon || '', parseInt(r.watch_report, 10) || 0, r.cache_img || 'on', r.sort_order || 0).run();
                     }
                 }
                 return Response.json({
@@ -2655,6 +2830,9 @@ export default {
             } catch (e) {}
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN icon TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN watch_report INTEGER DEFAULT 0`);
             } catch (e) {}
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN cache_img TEXT DEFAULT 'on'`);
@@ -2745,17 +2923,24 @@ export default {
             if (request.method === 'POST') {
                 const data = await request.json();
                 let currentSortOrder = 0;
+                let currentLastPlay = '';
                 if (data.oldPrefix && data.oldPrefix !== data.prefix) {
-                    const oldRow = await env.DB.prepare('SELECT sort_order FROM routes WHERE prefix = ?').bind(data.oldPrefix).first();
-                    if (oldRow) currentSortOrder = oldRow.sort_order;
+                    const oldRow = await env.DB.prepare('SELECT sort_order, last_play FROM routes WHERE prefix = ?').bind(data.oldPrefix).first();
+                    if (oldRow) {
+                        currentSortOrder = oldRow.sort_order;
+                        currentLastPlay = oldRow.last_play || '';
+                    }
                     await env.DB.prepare('DELETE FROM routes WHERE prefix = ?').bind(data.oldPrefix).run();
                 } else {
-                    const oldRow = await env.DB.prepare('SELECT sort_order FROM routes WHERE prefix = ?').bind(data.prefix).first();
-                    if (oldRow) currentSortOrder = oldRow.sort_order;
+                    const oldRow = await env.DB.prepare('SELECT sort_order, last_play FROM routes WHERE prefix = ?').bind(data.prefix).first();
+                    if (oldRow) {
+                        currentSortOrder = oldRow.sort_order;
+                        currentLastPlay = oldRow.last_play || '';
+                    }
                 }
 
-                await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, icon, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                    .bind(data.prefix, data.target, data.mode || 'off', data.remark || '', data.icon || '', data.cache_img || 'on', currentSortOrder).run();
+                await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                    .bind(data.prefix, data.target, data.mode || 'off', data.remark || '', data.last_play || currentLastPlay, data.icon || '', parseInt(data.watch_report, 10) || 0, data.cache_img || 'on', currentSortOrder).run();
                 return Response.json({
                     success: true
                 });
