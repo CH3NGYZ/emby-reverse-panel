@@ -525,15 +525,6 @@ const HTML_UI = `
             
         </div>
         
-        <div style="text-align: center; padding-top: 10px; padding-bottom: 20px;">
-            <a href="https://t.me/MakkaPakkaOvO" target="_blank" style="text-decoration: none; color: var(--text); font-weight: 600; display: inline-flex; align-items: center; padding: 12px 24px; background: var(--card); border-radius: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.06); transition: 0.3s; font-size: 14px; border: 1px solid var(--border);">
-                ${SVG_TG}
-                联系作者 MakkaPakkaOvO
-            </a>
-            <div style="margin-top: 20px; font-size: 12px; color: var(--text-sec); line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto; padding: 0 15px;">
-                <strong>免责声明:</strong> 本项目仅供学习与技术测试使用，请遵守当地法律法规。使用者对配置、转发内容与访问行为承担全部责任，开发者不对任何直接或间接损失负责。
-            </div>
-        </div>
     </div>
 
     <script>
@@ -958,13 +949,14 @@ const HTML_UI = `
                 });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || '保存失败');
+                btn.disabled = false;
+                btn.textContent = originalText;
                 showToast('✅ 保号天数已更新');
                 await load();
             } catch (err) {
-                showToast('❌ 保存失败: ' + err.message);
-            } finally {
                 btn.disabled = false;
                 btn.textContent = originalText;
+                showToast('❌ 保存失败: ' + err.message);
             }
         }
 
