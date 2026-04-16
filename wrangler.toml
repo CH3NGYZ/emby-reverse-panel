@@ -1,0 +1,6 @@
+name = "emby-reverse-panel"
+main = "index.js"
+compatibility_date = "2026-04-16"
+
+# Optional but recommended for this repo's runtime features.
+workers_dev = true
