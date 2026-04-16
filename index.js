@@ -1,6 +1,6 @@
 // VERSION: 2.0.6
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.0.6"; 
+const CURRENT_VERSION = "2.0.6";
 const GITHUB_RAW_URL = "这里填下你的在线更新地址";
 
 // ==========================================
@@ -34,7 +34,7 @@ const CSS_COMMON = `
     }
 
     * { box-sizing: border-box; touch-action: manipulation; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; -webkit-text-size-adjust: 100%; transition: background-color 0.3s, color 0.3s; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px 20px 120px; -webkit-text-size-adjust: 100%; transition: background-color 0.3s, color 0.3s; }
     .container { max-width: 1200px; margin: 0 auto; width: 100%; min-height: 90vh; display: flex; flex-direction: column;}
     .content-wrap { flex: 1; }
     input, select, button, textarea { font-family: inherit; outline: none; font-size: 15px; }
@@ -83,6 +83,14 @@ const CSS_COMMON = `
     .search-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0,113,227,0.15); }
 
     .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; margin-top: 20px; }
+    .tabs-nav { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 12px; justify-content: center; align-items: stretch; padding: 10px; border-radius: 24px; background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--border); box-shadow: 0 12px 30px rgba(0,0,0,0.12); backdrop-filter: blur(16px); z-index: 999; }
+    .tab-btn { min-width: 96px; padding: 10px 16px 9px; border: 1px solid transparent; border-radius: 18px; background: transparent; color: var(--text-sec); cursor: pointer; font-weight: 600; transition: 0.2s; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; line-height: 1.1; }
+    .tab-btn .tab-emoji { font-size: 20px; display: block; }
+    .tab-btn .tab-text { font-size: 13px; display: block; }
+    .tab-btn:hover { color: var(--primary); border-color: rgba(0,113,227,0.35); }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(0, 113, 227, 0.2); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
     .emby-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 14px; transition: 0.3s; position: relative; }
     .emby-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.06); transform: translateY(-2px); }
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
@@ -108,12 +116,16 @@ const CSS_COMMON = `
 
     /* 响应式移动端适配 */
     @media (max-width: 768px) {
-        body { padding: 12px; }
+        body { padding: 12px 12px 112px; }
         .card { padding: 16px; border-radius: 12px; margin-bottom: 16px; }
         .header h1 { font-size: 22px; }
         .toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
         .toolbar > * { width: 100%; display: flex; justify-content: center; }
         .search-input { width: 100%; }
+        .tabs-nav { left: 12px; right: 12px; bottom: 12px; transform: none; gap: 8px; padding: 8px; border-radius: 20px; }
+        .tab-btn { flex: 1 1 0; min-width: 0; padding: 10px 8px 8px; }
+        .tab-btn .tab-emoji { font-size: 18px; }
+        .tab-btn .tab-text { font-size: 12px; }
         .node-grid { grid-template-columns: 1fr; }
         .table-wrapper { border: none; background: transparent; overflow: visible; }
         table, thead, tbody, th, td, tr { display: block; width: 100%; }
@@ -246,31 +258,6 @@ const HTML_UI = `
                     <div id="trace-egress" style="font-weight:600; color:#34c759; font-family: monospace; font-size: 15px;">雷达扫描中...</div>
                 </div>
             </div>
-        </div><div style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; margin-top: 20px;">
-            <div style="font-weight: 600; margin-bottom: 12px; font-size: 16px;">⚙️ Worker 调度模式与区域设置</div>
-            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                
-                <select id="cf-mode-select" onchange="handleModeChange()" style="flex: 1; min-width: 180px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-                    <option value='{"mode":"smart"}'>🤖 智能调度 (Smart Placement)</option>
-                    <option value='{"mode":"off"}'>🌍 边缘节点 (Edge - 默认离访客近)</option>
-                    <optgroup label="📍 指定云厂商物理机房落地">
-                        <option value="aws">☁️ AWS (亚马逊云)</option>
-                        <option value="gcp">☁️ GCP (谷歌云)</option>
-                        <option value="azure">☁️ Azure (微软云)</option>
-                    </optgroup>
-                    <option value="custom">✏️ 手动输入区域代码...</option>
-                </select>
-
-                <select id="cf-region-select" style="display: none; flex: 1.5; min-width: 200px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-                </select>
-
-                <input type="text" id="cf-custom-input" placeholder="输入云代码 (如 gcp:us-west1)" style="display: none; flex: 1.5; min-width: 200px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
-                
-                <button onclick="updatePlacement()" style="background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; white-space: nowrap;">
-                    提交修改
-                </button>
-            </div>
-            <div id="place-status" style="margin-top: 10px; font-size: 13px; color: var(--text-sec); font-weight: 600;">后台全自动安全调度，不暴露任何私钥</div>
         </div>
         <div class="content-wrap">
             <div class="header" style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap:wrap; gap:16px;">
@@ -288,91 +275,47 @@ const HTML_UI = `
                     <button class="logout-btn" style="background: #ff3b30; color: white; border: none; border-radius: 10px; font-weight: 600; padding: 10px 16px; cursor: pointer;" onclick="logout()">退出系统</button>
                 </div>
             </div>
-
-            <div class="card" style="border-left: 4px solid #ff3b30;">
-    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-        <h2 style="margin:0; font-size:18px; color: #ff3b30;">🚀 一键覆盖/更新 Worker 核心层代码</h2>
-    </div>
-    <div style="font-size: 13px; color: var(--text-sec); margin-bottom: 12px;">⚠️ 警告：提交错误的代码会导致面板瞬间崩溃（500 错误）。请确保代码已在本地测试通过！</div>
-    <textarea id="codeArea" rows="6" placeholder="方式一：在此处直接粘贴修改好的最新代码全文..." style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; font-family: monospace; resize: vertical; background:var(--card); font-size:12px;"></textarea>
-    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-        <span style="font-size:14px; font-weight:bold;">或 方式二：</span>
-        <input type="file" id="fileInput" accept=".js" style="font-size:14px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background:var(--bg);">
-        <button class="btn-submit" id="deployBtn" onclick="deployWorker()" style="background: #ff3b30; box-shadow: 0 4px 12px rgba(255, 59, 48, 0.2); margin-left: auto;">🔥 立即覆盖部署并重启节点</button>
-    </div>
-</div>
-            <div class="card">
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                    <h2 style="margin:0; font-size:18px;">⚡ 专属线路测速与动态 DNS 解析</h2>
-                </div>
-                
-                <div style="background: rgba(120,120,120,0.05); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 16px;">
-                    <div style="font-size: 13px; font-weight: 600; color: var(--text-sec); margin-bottom: 8px;">📡 当前域名生效的 DNS 解析：</div>
-                    <div id="dnsStatus" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <span style="color:#888; font-size: 14px;">加载中...</span>
-                    </div>
-                </div>
-
-                <div class="toolbar">
-                    <select id="ipType" style="font-weight: 600; color: var(--primary); padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background:var(--card);">
-                        <option value="all">🌐 综合混合源</option>
-                        <option value="电信">🔵 电信专属</option>
-                        <option value="联通">🟠 联通专属</option>
-                        <option value="移动">🟢 移动专属</option>
-                        <option value="多线">🟣 多线BGP</option>
-                        <option value="ipv6">🚀 IPv6节点</option>
-                        <option value="优选">🌟 顶尖优选库</option>
-                    </select>
-
-                    <button class="btn-submit" id="btnFetchRemote" onclick="fetchRemoteAndTest()">🌍 提取预设源并测速</button>
-                    <button class="btn-submit" onclick="batchTcpPing()" style="background: #ff9500; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.2);">🌐 复制去 ITDog</button>
-                    <button class="btn-submit" onclick="clearTest()" style="background: #8e8e93; box-shadow: 0 4px 12px rgba(142, 142, 147, 0.2);">🗑️ 清空列表</button>
-                </div>
-
-                <div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 16px;">
-                    <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
-                        <input type="text" id="customApiUrl" value="https://ip.v2too.top/api/nodes" placeholder="填入自定义 JSON 或 文本 API 链接" style="flex: 1; min-width: 200px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background:var(--card);">
-                        <button class="btn-submit" id="btnFetchCustomApi" onclick="fetchCustomApiAndTest()" style="background: #32ade6; box-shadow: 0 4px 12px rgba(50, 173, 230, 0.2);">🌐 拉取 API 并测速</button>
-                    </div>
-
-                    <textarea id="customIps" rows="2" placeholder="在此粘贴自定义 IPv4、IPv6 或 优选域名 (支持混杂文本，自动提取)" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; font-family: monospace; resize: vertical; background:var(--card);"></textarea>
-                    
-                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                        <button class="btn-submit" id="btnTestCustom" onclick="testCustomIPs()" style="background: #5856d6; box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);">🧪 测试粘贴的节点</button>
-                        <button class="btn-submit" id="btnDirectCname" onclick="directSubmitCname()" style="background: #af52de; box-shadow: 0 4px 12px rgba(175, 82, 222, 0.2);">🔗 直推 CNAME (免测速)</button>
-                        <div style="width: 100%; height: 1px; background: var(--border); margin: 4px 0;"></div>
-                        <button class="btn-submit" id="btnTop3Dns" onclick="updateTop3ToDns()" style="background: #ff2d55; box-shadow: 0 4px 12px rgba(255, 45, 85, 0.2);">🌟 更新 TOP3 至 DNS</button>
-                        <button class="btn-submit" id="btnSelectedDns" onclick="updateSelectedToDns()" style="background: #34c759; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);">☑️ 提交选中节点至 DNS</button>
-                    </div>
-                </div>
-                
-                <div id="statusText" style="line-height: 1.6; font-size: 14px; color: var(--text-sec); margin-bottom: 16px; padding: 12px 16px; background: rgba(52, 199, 89, 0.1); border-radius: 10px; border-left: 4px solid #34c759;">
-                    💡 测速完成后，可勾选复选框自由组合，点击【提交选中节点至 DNS】自动分发。
-                </div>
-
-                <div class="table-wrapper">
-                    <table style="width: 100%;">
-                        <thead>
-                            <tr>
-                                <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAll" class="ip-checkbox" onclick="toggleSelectAll()"></th>
-                                <th>专属节点 (点击复制)</th>
-                                <th>预估延迟</th>
-                                <th>连通状态</th>
-                                <th>记录类型/归属地</th>
-                                <th>单节点操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="testTableBody">
-                            <tr><td colspan="6" style="text-align:center;color:var(--text-sec);">暂无数据，请拉取节点或输入自定义 IP/域名 测试</td></tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="tabs-nav">
+                <button type="button" class="tab-btn active" data-tab="proxy" onclick="switchTab('proxy', this)"><span class="tab-emoji">🔁</span><span class="tab-text">反代服务</span></button>
+                <button type="button" class="tab-btn" data-tab="dns" onclick="switchTab('dns', this)"><span class="tab-emoji">🌐</span><span class="tab-text">DNS服务</span></button>
+                <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)"><span class="tab-emoji">⚙️</span><span class="tab-text">系统设置</span></button>
             </div>
-            
-            <div class="card">
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                    <h2 style="margin:0; font-size:18px;">部署 / 编辑反代节点</h2>
-                    <div>
+
+            <div id="tab-proxy" class="tab-panel active">
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px;">已反代的媒体库</h2>
+                        <div style="display: flex; gap: 10px; align-items:center; flex-wrap: wrap;">
+                            <button class="btn-submit" onclick="pingAllNodes()" style="background:#32ade6; padding: 10px 14px; font-size: 13px;">⚡ 全局测速</button>
+                            <button id="btnPurge" class="btn-submit" onclick="purgeCache()" style="background:#ff2d55; padding: 10px 14px; font-size: 13px;">🧹 刷新全站海报</button>
+                            <input type="text" id="searchNode" class="search-input" placeholder="🔍 搜索备注或后缀查找..." onkeyup="filterNodesList()">
+                        </div>
+                    </div>
+                    <div style="background: rgba(0, 122, 255, 0.05); padding: 12px 20px; border-radius: 12px; border: 1px dashed var(--primary); margin-bottom: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <label style="cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="selectAllNodes" onchange="toggleSelectAllNodes(this)" style="width: 18px; height: 18px; accent-color: var(--primary);"> 
+                    全选节点
+                </label>
+                
+                <div style="width: 2px; height: 20px; background: var(--border);"></div> <select id="batch-mode-select" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600;">
+                    <option value="">🔄 读取模式中...</option>
+                </select>
+
+                <button onclick="batchUpdateModes()" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,113,227,0.2);">
+                    🚀 批量应用模式
+                </button>
+
+                <span id="batch-status" style="font-size: 13px; font-weight: 600;"></span>
+            </div>
+                    <div id="list-grid" class="node-grid">
+                        <div style="text-align:center; color:var(--text-sec); grid-column: 1 / -1; padding: 40px;">读取数据中...</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px;">部署 / 编辑反代节点</h2>
+                        <div>
                         <button class="btn-submit" onclick="exportConfig()" style="background:#5856d6; padding: 8px 16px; font-size: 13px;">📦 导出配置</button>
                         <button class="btn-submit" onclick="importConfig()" style="background:#ff9500; padding: 8px 16px; font-size: 13px;">📥 导入配置</button>
                     </div>
@@ -428,34 +371,116 @@ const HTML_UI = `
                     </div>
                 </form>
             </div>
+            </div>
 
-            <div class="card">
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                    <h2 style="margin:0; font-size:18px;">已反代的媒体库</h2>
-                    <div style="display: flex; gap: 10px; align-items:center; flex-wrap: wrap;">
-                        <button class="btn-submit" onclick="pingAllNodes()" style="background:#32ade6; padding: 10px 14px; font-size: 13px;">⚡ 全局测速</button>
-                        <button id="btnPurge" class="btn-submit" onclick="purgeCache()" style="background:#ff2d55; padding: 10px 14px; font-size: 13px;">🧹 刷新全站海报</button>
-                        <input type="text" id="searchNode" class="search-input" placeholder="🔍 搜索备注或后缀查找..." onkeyup="filterNodesList()">
+            <div id="tab-dns" class="tab-panel">
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px;">⚡ 专属线路测速与动态 DNS 解析</h2>
+                    </div>
+                    
+                    <div style="background: rgba(120,120,120,0.05); padding: 12px 16px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 16px;">
+                        <div style="font-size: 13px; font-weight: 600; color: var(--text-sec); margin-bottom: 8px;">📡 当前域名生效的 DNS 解析：</div>
+                        <div id="dnsStatus" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <span style="color:#888; font-size: 14px;">加载中...</span>
+                        </div>
+                    </div>
+
+                    <div class="toolbar">
+                        <select id="ipType" style="font-weight: 600; color: var(--primary); padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background:var(--card);">
+                            <option value="all">🌐 综合混合源</option>
+                            <option value="电信">🔵 电信专属</option>
+                            <option value="联通">🟠 联通专属</option>
+                            <option value="移动">🟢 移动专属</option>
+                            <option value="多线">🟣 多线BGP</option>
+                            <option value="ipv6">🚀 IPv6节点</option>
+                            <option value="优选">🌟 顶尖优选库</option>
+                        </select>
+
+                        <button class="btn-submit" id="btnFetchRemote" onclick="fetchRemoteAndTest()">🌍 提取预设源并测速</button>
+                        <button class="btn-submit" onclick="batchTcpPing()" style="background: #ff9500; box-shadow: 0 4px 12px rgba(255, 149, 0, 0.2);">🌐 复制去 ITDog</button>
+                        <button class="btn-submit" onclick="clearTest()" style="background: #8e8e93; box-shadow: 0 4px 12px rgba(142, 142, 147, 0.2);">🗑️ 清空列表</button>
+                    </div>
+
+                    <div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 16px;">
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="customApiUrl" value="https://ip.v2too.top/api/nodes" placeholder="填入自定义 JSON 或 文本 API 链接" style="flex: 1; min-width: 200px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background:var(--card);">
+                            <button class="btn-submit" id="btnFetchCustomApi" onclick="fetchCustomApiAndTest()" style="background: #32ade6; box-shadow: 0 4px 12px rgba(50, 173, 230, 0.2);">🌐 拉取 API 并测速</button>
+                        </div>
+
+                        <textarea id="customIps" rows="2" placeholder="在此粘贴自定义 IPv4、IPv6 或 优选域名 (支持混杂文本，自动提取)" style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; font-family: monospace; resize: vertical; background:var(--card);"></textarea>
+                        
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn-submit" id="btnTestCustom" onclick="testCustomIPs()" style="background: #5856d6; box-shadow: 0 4px 12px rgba(88, 86, 214, 0.2);">🧪 测试粘贴的节点</button>
+                            <button class="btn-submit" id="btnDirectCname" onclick="directSubmitCname()" style="background: #af52de; box-shadow: 0 4px 12px rgba(175, 82, 222, 0.2);">🔗 直推 CNAME (免测速)</button>
+                            <div style="width: 100%; height: 1px; background: var(--border); margin: 4px 0;"></div>
+                            <button class="btn-submit" id="btnTop3Dns" onclick="updateTop3ToDns()" style="background: #ff2d55; box-shadow: 0 4px 12px rgba(255, 45, 85, 0.2);">🌟 更新 TOP3 至 DNS</button>
+                            <button class="btn-submit" id="btnSelectedDns" onclick="updateSelectedToDns()" style="background: #34c759; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);">☑️ 提交选中节点至 DNS</button>
+                        </div>
+                    </div>
+                    
+                    <div id="statusText" style="line-height: 1.6; font-size: 14px; color: var(--text-sec); margin-bottom: 16px; padding: 12px 16px; background: rgba(52, 199, 89, 0.1); border-radius: 10px; border-left: 4px solid #34c759;">
+                        💡 测速完成后，可勾选复选框自由组合，点击【提交选中节点至 DNS】自动分发。
+                    </div>
+
+                    <div class="table-wrapper">
+                        <table style="width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAll" class="ip-checkbox" onclick="toggleSelectAllDns()"></th>
+                                    <th>专属节点 (点击复制)</th>
+                                    <th>预估延迟</th>
+                                    <th>连通状态</th>
+                                    <th>记录类型/归属地</th>
+                                    <th>单节点操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="testTableBody">
+                                <tr><td colspan="6" style="text-align:center;color:var(--text-sec);">暂无数据，请拉取节点或输入自定义 IP/域名 测试</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div style="background: rgba(0, 122, 255, 0.05); padding: 12px 20px; border-radius: 12px; border: 1px dashed var(--primary); margin-bottom: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-            <label style="cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="selectAllNodes" onchange="toggleSelectAll(this)" style="width: 18px; height: 18px; accent-color: var(--primary);"> 
-                全选节点
-            </label>
-            
-            <div style="width: 2px; height: 20px; background: var(--border);"></div> <select id="batch-mode-select" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600;">
-                <option value="">🔄 读取模式中...</option>
-            </select>
+            </div>
 
-            <button onclick="batchUpdateModes()" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,113,227,0.2);">
-                🚀 批量应用模式
-            </button>
+            <div id="tab-settings" class="tab-panel">
+                <div style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; margin-top: 20px;">
+                    <div style="font-weight: 600; margin-bottom: 12px; font-size: 16px;">⚙️ Worker 调度模式与区域设置</div>
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <select id="cf-mode-select" onchange="handleModeChange()" style="flex: 1; min-width: 180px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
+                            <option value='{"mode":"smart"}'>🤖 智能调度 (Smart Placement)</option>
+                            <option value='{"mode":"off"}'>🌍 边缘节点 (Edge - 默认离访客近)</option>
+                            <optgroup label="📍 指定云厂商物理机房落地">
+                                <option value="aws">☁️ AWS (亚马逊云)</option>
+                                <option value="gcp">☁️ GCP (谷歌云)</option>
+                                <option value="azure">☁️ Azure (微软云)</option>
+                            </optgroup>
+                            <option value="custom">✏️ 手动输入区域代码...</option>
+                        </select>
 
-            <span id="batch-status" style="font-size: 13px; font-weight: 600;"></span>
-        </div>
-                <div id="list-grid" class="node-grid">
-                    <div style="text-align:center; color:var(--text-sec); grid-column: 1 / -1; padding: 40px;">读取数据中...</div>
+                        <select id="cf-region-select" style="display: none; flex: 1.5; min-width: 200px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
+                        </select>
+
+                        <input type="text" id="cf-custom-input" placeholder="输入云代码 (如 gcp:us-west1)" style="display: none; flex: 1.5; min-width: 200px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text);">
+                        
+                        <button onclick="updatePlacement()" style="background: #007aff; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; white-space: nowrap;">
+                            提交修改
+                        </button>
+                    </div>
+                    <div id="place-status" style="margin-top: 10px; font-size: 13px; color: var(--text-sec); font-weight: 600;">后台全自动安全调度，不暴露任何私钥</div>
+                </div>
+
+                <div class="card" style="border-left: 4px solid #ff3b30;">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px; color: #ff3b30;">🚀 一键覆盖/更新 Worker 核心层代码</h2>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-sec); margin-bottom: 12px;">⚠️ 警告：提交错误的代码会导致面板瞬间崩溃（500 错误）。请确保代码已在本地测试通过！</div>
+                    <textarea id="codeArea" rows="6" placeholder="方式一：在此处直接粘贴修改好的最新代码全文..." style="width: 100%; padding: 14px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 12px; font-family: monospace; resize: vertical; background:var(--card); font-size:12px;"></textarea>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <span style="font-size:14px; font-weight:bold;">或 方式二：</span>
+                        <input type="file" id="fileInput" accept=".js" style="font-size:14px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background:var(--bg);">
+                        <button class="btn-submit" id="deployBtn" onclick="deployWorker()" style="background: #ff3b30; box-shadow: 0 4px 12px rgba(255, 59, 48, 0.2); margin-left: auto;">🔥 立即覆盖部署并重启节点</button>
+                    </div>
                 </div>
             </div>
             
@@ -740,6 +765,15 @@ const HTML_UI = `
             const t = document.getElementById('toast');
             t.textContent = msg; t.classList.add('show');
             setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function switchTab(tabName, triggerEl) {
+            document.querySelectorAll('.tab-panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === 'tab-' + tabName);
+            });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn === triggerEl);
+            });
         }
 
         async function purgeCache() {
@@ -1076,7 +1110,7 @@ const HTML_UI = `
             }
         }
 
-        function toggleSelectAll() {
+        function toggleSelectAllDns() {
             const isChecked = document.getElementById('selectAll').checked;
             document.querySelectorAll('.row-checkbox').forEach(cb => {
                 if(!cb.disabled) cb.checked = isChecked;
@@ -1531,7 +1565,7 @@ const HTML_UI = `
         }, 100); 
 
         // 🚀 全选 / 取消全选逻辑
-        function toggleSelectAll(checkbox) {
+        function toggleSelectAllNodes(checkbox) {
             const checkboxes = document.querySelectorAll('.node-cb');
             checkboxes.forEach(cb => cb.checked = checkbox.checked);
         }
@@ -1712,7 +1746,7 @@ async function getCFTraffic(env, type) {
             beijingTime.setUTCHours(0, 0, 0, 0);
             // 2. 转回 UTC 供 API 查询
             const start = new Date(beijingTime.getTime() - 8 * 3600000);
-            
+
             graphqlQuery = {
                 query: `
                 query {
@@ -1762,19 +1796,19 @@ async function getCFTraffic(env, type) {
 
         const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
             method: 'POST',
-            headers: { 
+            headers: {
                 'Authorization': `Bearer ${env.CF_API_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(graphqlQuery)
         });
-        
+
         const cfData = await cfRes.json();
-        
+
         if (cfData.errors && cfData.errors.length > 0) {
             return `API报错: ${cfData.errors[0].message}`;
         }
-        
+
         const zones = cfData?.data?.viewer?.zones;
         let totalBytes = 0;
 
@@ -1783,7 +1817,9 @@ async function getCFTraffic(env, type) {
                 totalBytes = zones[0].httpRequestsAdaptiveGroups[0]?.sum?.edgeResponseBytes || 0;
             } else if (type !== 'today' && zones[0].httpRequests1dGroups) {
                 // 将多天的 bytes 聚合累加
-                zones[0].httpRequests1dGroups.forEach(g => { totalBytes += (g.sum.bytes || 0); });
+                zones[0].httpRequests1dGroups.forEach(g => {
+                    totalBytes += (g.sum.bytes || 0);
+                });
             }
         }
 
@@ -1794,7 +1830,7 @@ async function getCFTraffic(env, type) {
         if (totalBytes >= 1024) return (totalBytes / 1024).toFixed(2) + " KB";
         return totalBytes + " B";
 
-    } catch(e) {
+    } catch (e) {
         return "请求异常";
     }
 }
@@ -1825,7 +1861,9 @@ async function sendTgStats(env, chatId) {
         if (env.CF_API_TOKEN && env.CF_ZONE_ID && env.DB) {
             try {
                 // 1. 获取所有节点
-                const { results: routes } = await env.DB.prepare(`SELECT prefix, remark FROM routes`).all();
+                const {
+                    results: routes
+                } = await env.DB.prepare(`SELECT prefix, remark FROM routes`).all();
                 if (routes && routes.length > 0) {
                     const end = new Date();
                     const beijingTime = new Date(end.getTime() + 8 * 3600000);
@@ -1859,19 +1897,22 @@ async function sendTgStats(env, chatId) {
 
                             const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
                                 method: 'POST',
-                                headers: { 'Authorization': `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+                                    'Content-Type': 'application/json'
+                                },
                                 body: JSON.stringify(graphqlQuery)
                             });
-                            
+
                             const cfData = await cfRes.json();
-                            const bytes = cfData?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0]?.sum?.edgeResponseBytes || 0;
-                            
+                            const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
+
                             // 3. 找出最大值
                             if (bytes > maxBytes) {
                                 maxBytes = bytes;
                                 topNodeName = r.remark || r.prefix;
                             }
-                        } catch(e) {}
+                        } catch (e) {}
                     }));
 
                     // 4. 转换字节并组装文本
@@ -1882,7 +1923,7 @@ async function sendTgStats(env, chatId) {
                         else if (maxBytes >= 1048576) formatted = (maxBytes / 1048576).toFixed(2) + " MB";
                         else if (maxBytes >= 1024) formatted = (maxBytes / 1024).toFixed(2) + " KB";
                         else formatted = maxBytes + " B";
-                        
+
                         topNodeMsg = `${topNodeName} 跑了 ${formatted}`;
                     } else {
                         topNodeMsg = "今日全站零消耗";
@@ -1898,7 +1939,7 @@ async function sendTgStats(env, chatId) {
         const regionStr = topRegionQuery ? `${topRegionQuery.country === 'CN' ? '🇨🇳 中国大陆' : topRegionQuery.country} (${topRegionQuery.c} 次)` : '暂无记录';
         const nodeStr = topNodeQuery ? `${topNodeQuery.remark || '未命名节点'} (${topNodeQuery.c} 次)` : '暂无记录';
 
-        const msg = 
+        const msg =
             `📊 *今日反代播放数据*\n\n` +
             `▶️ *今日总播放次数:* ${totalStr} 次\n` +
             `🌍 *最多访问地区:* ${regionStr}\n` +
@@ -1912,8 +1953,14 @@ async function sendTgStats(env, chatId) {
 
         await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: msg,
+                parse_mode: 'Markdown'
+            })
         });
     } catch (e) {
         console.error("TG Send Error:", e);
@@ -1937,30 +1984,68 @@ export default {
         if (url.pathname === '/api/placement' && request.method === 'POST') {
             try {
                 const body = await request.json();
-                const placementData = body.placement; 
-                
+                const placementData = body.placement;
+
                 if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID || !env.CF_WORKER_NAME) {
-                    return new Response(JSON.stringify({ success: false, msg: '后台变量未配置全！请检查 CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME' }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }});
+                    return new Response(JSON.stringify({
+                        success: false,
+                        msg: '后台变量未配置全！请检查 CF_API_TOKEN, CF_ACCOUNT_ID, CF_WORKER_NAME'
+                    }), {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
                 }
-                
+
                 const formData = new FormData();
-                formData.append('settings', new Blob([JSON.stringify({ placement: placementData })], { type: 'application/json' }));
+                formData.append('settings', new Blob([JSON.stringify({
+                    placement: placementData
+                })], {
+                    type: 'application/json'
+                }));
 
                 const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${env.CF_WORKER_NAME}/settings`;
                 const cfRes = await fetch(cfUrl, {
                     method: 'PATCH',
-                    headers: { 'Authorization': `Bearer ${env.CF_API_TOKEN}` },
-                    body: formData 
+                    headers: {
+                        'Authorization': `Bearer ${env.CF_API_TOKEN}`
+                    },
+                    body: formData
                 });
-                
+
                 const cfData = await cfRes.json();
                 if (cfData.success) {
-                    return new Response(JSON.stringify({ success: true, msg: '部署区域修改成功！' }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }});
+                    return new Response(JSON.stringify({
+                        success: true,
+                        msg: '部署区域修改成功！'
+                    }), {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
                 } else {
-                    return new Response(JSON.stringify({ success: false, msg: 'CF报错: ' + (cfData.errors[0]?.message || '未知错误') }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }});
+                    return new Response(JSON.stringify({
+                        success: false,
+                        msg: 'CF报错: ' + (cfData.errors[0]?.message || '未知错误')
+                    }), {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    });
                 }
-            } catch(e) {
-                return new Response(JSON.stringify({ success: false, msg: e.message }), { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }});
+            } catch (e) {
+                return new Response(JSON.stringify({
+                    success: false,
+                    msg: e.message
+                }), {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                });
             }
         }
 
@@ -1973,12 +2058,14 @@ export default {
             try {
                 // 请求 CF 官方 trace 接口获取落地机房
                 const traceRes = await fetch('https://1.1.1.1/cdn-cgi/trace', {
-                    headers: { 'User-Agent': 'Mozilla/5.0 (CF-Worker-Trace)' }
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (CF-Worker-Trace)'
+                    }
                 });
                 const traceText = await traceRes.text();
                 const match = traceText.match(/colo=([A-Z]+)/);
                 if (match) egressColo = match[1];
-            } catch(e) {
+            } catch (e) {
                 egressColo = '获取失败';
             }
 
@@ -2022,15 +2109,26 @@ export default {
                     }
                 }
                 return new Response("OK");
-            } catch(e) { return new Response("OK"); }
+            } catch (e) {
+                return new Response("OK");
+            }
         }
 
         if (request.method === "OPTIONS") {
-            return new Response(null, { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS", "Access-Control-Allow-Headers": "*", "Access-Control-Max-Age": "86400" } });
+            return new Response(null, {
+                headers: {
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Max-Age": "86400"
+                }
+            });
         }
 
         const EXPECTED_TOKEN = env.ADMIN_TOKEN;
-        if (!EXPECTED_TOKEN) return new Response("请在 Worker 变量中配置 ADMIN_TOKEN", { status: 500 });
+        if (!EXPECTED_TOKEN) return new Response("请在 Worker 变量中配置 ADMIN_TOKEN", {
+            status: 500
+        });
 
         function getCookie(req, name) {
             const cookieString = req.headers.get("Cookie");
@@ -2044,20 +2142,33 @@ export default {
         if (isPanelOrApi && url.pathname !== '/api/tg-webhook') {
             const providedToken = getCookie(request, 'admin_token');
             if (providedToken !== EXPECTED_TOKEN) {
-                if (url.pathname === '/') return new Response(LOGIN_UI, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
-                else return new Response('Unauthorized', { status: 401 });
+                if (url.pathname === '/') return new Response(LOGIN_UI, {
+                    headers: {
+                        "Content-Type": "text/html;charset=UTF-8"
+                    }
+                });
+                else return new Response('Unauthorized', {
+                    status: 401
+                });
             }
         }
 
         if (url.pathname === '/') {
-            return new Response(HTML_UI, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+            return new Response(HTML_UI, {
+                headers: {
+                    "Content-Type": "text/html;charset=UTF-8"
+                }
+            });
         }
 
         // ==========================================
         // 2.3 数据大屏统计接口 (Analytics)
         // ==========================================
         if (url.pathname === '/api/analytics' && request.method === 'GET') {
-            if (!env.DB) return Response.json({ success: false, error: '未绑定 D1 数据库' });
+            if (!env.DB) return Response.json({
+                success: false,
+                error: '未绑定 D1 数据库'
+            });
             try {
                 // 并发获取 24小时、7天、30天流量 (通过全新 GraphQL API 规避限制)
                 const [trafficToday, traffic7d, traffic30d] = await Promise.all([
@@ -2069,16 +2180,21 @@ export default {
                 const trend = await env.DB.prepare(`SELECT date(timestamp, '+8 hours') as date, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY date(timestamp, '+8 hours') ORDER BY date ASC`).all();
                 const locations = await env.DB.prepare(`SELECT country, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY country ORDER BY count DESC`).all();
                 const recents = await env.DB.prepare(`SELECT prefix, datetime(timestamp, '+8 hours') as timestamp, ip, country, ua FROM visitor_logs ORDER BY timestamp DESC LIMIT 20`).all();
-                
-                return Response.json({ 
-                    success: true, 
-                    trend: trend.results, 
-                    locations: locations.results, 
-                    recents: recents.results, 
-                    trafficToday, traffic7d, traffic30d 
+
+                return Response.json({
+                    success: true,
+                    trend: trend.results,
+                    locations: locations.results,
+                    recents: recents.results,
+                    trafficToday,
+                    traffic7d,
+                    traffic30d
                 });
-            } catch(e) {
-                return Response.json({ success: false, error: e.message });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                });
             }
         }
 
@@ -2090,18 +2206,26 @@ export default {
             const accountId = env.CF_ACCOUNT_ID;
             const workerName = env.CF_WORKER_NAME;
             if (!cfToken || !accountId || !workerName) {
-                return Response.json({ success: false, error: '缺少 CF_API_TOKEN, CF_ACCOUNT_ID 或 CF_WORKER_NAME 环境变量' });
+                return Response.json({
+                    success: false,
+                    error: '缺少 CF_API_TOKEN, CF_ACCOUNT_ID 或 CF_WORKER_NAME 环境变量'
+                });
             }
             try {
                 const body = await request.json();
-                if (!body.newCode) return Response.json({ success: false, error: '代码内容为空。' });
+                if (!body.newCode) return Response.json({
+                    success: false,
+                    error: '代码内容为空。'
+                });
 
                 // 1. 🚀 终极修复：调用纯 JSON 的 services 接口获取真实配置，绝对不再崩溃！
                 const serviceRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/services/${workerName}`, {
-                    headers: { 'Authorization': `Bearer ${cfToken}` }
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`
+                    }
                 });
                 const serviceData = await serviceRes.json();
-                
+
                 let compDate = "2024-01-01"; // 依然保留兜底，但这次绝不会用到
                 let compFlags = undefined;
                 let placement = undefined;
@@ -2114,7 +2238,7 @@ export default {
                     } else if (serviceData.result.script) {
                         scriptInfo = serviceData.result.script;
                     }
-                    
+
                     if (scriptInfo) {
                         if (scriptInfo.compatibility_date) compDate = scriptInfo.compatibility_date;
                         if (scriptInfo.compatibility_flags) compFlags = scriptInfo.compatibility_flags;
@@ -2126,13 +2250,19 @@ export default {
                 // 2. 备份普通的字符串变量
                 for (const key in env) {
                     if (typeof env[key] === 'string') {
-                        preservedBindings.push({ name: key, type: 'plain_text', text: env[key] });
+                        preservedBindings.push({
+                            name: key,
+                            type: 'plain_text',
+                            text: env[key]
+                        });
                     }
                 }
 
                 // 3. 拉取 D1、KV 等高级绑定并无损合并
                 const bindingsRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}/bindings`, {
-                    headers: { 'Authorization': `Bearer ${cfToken}` }
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`
+                    }
                 });
                 const bindingsData = await bindingsRes.json();
                 if (bindingsData.success && Array.isArray(bindingsData.result)) {
@@ -2145,121 +2275,250 @@ export default {
 
                 // 4. 组装最终的部署请求
                 const formData = new FormData();
-                const metadata = { 
+                const metadata = {
                     main_module: 'worker.js',
                     bindings: preservedBindings,
-                    compatibility_date: compDate 
+                    compatibility_date: compDate
                 };
                 if (compFlags) metadata.compatibility_flags = compFlags;
                 if (placement) metadata.placement = placement; // 🎯 完美带上你原始的放置地区！
 
-                formData.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }), 'metadata.json');
-                formData.append('worker.js', new Blob([body.newCode], { type: 'application/javascript+module' }), 'worker.js');
+                formData.append('metadata', new Blob([JSON.stringify(metadata)], {
+                    type: 'application/json'
+                }), 'metadata.json');
+                formData.append('worker.js', new Blob([body.newCode], {
+                    type: 'application/javascript+module'
+                }), 'worker.js');
 
                 const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers/scripts/${workerName}`;
                 const res = await fetch(cfUrl, {
                     method: 'PUT',
-                    headers: { 'Authorization': `Bearer ${cfToken}` },
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`
+                    },
                     body: formData
                 });
                 const data = await res.json();
                 if (data.success) {
-                    return Response.json({ success: true, msg: '代码更新成功，并已完美保留原有放置地区和兼容配置！' });
+                    return Response.json({
+                        success: true,
+                        msg: '代码更新成功，并已完美保留原有放置地区和兼容配置！'
+                    });
                 } else {
                     throw new Error(JSON.stringify(data.errors));
                 }
             } catch (e) {
-                return Response.json({ success: false, error: e.message });
+                return Response.json({
+                    success: false,
+                    error: e.message
+                });
             }
         }
         // ==========================================
         // 2.4 系统级与提取工具 API 
         // ==========================================
         if (url.pathname === '/api/purge-cache' && request.method === 'POST') {
-            const cfToken = env.CF_API_TOKEN; const zoneId = env.CF_ZONE_ID;
-            if (!cfToken || !zoneId) return Response.json({ success: false, error: '缺少 CF_API_TOKEN 或 CF_ZONE_ID 变量' });
+            const cfToken = env.CF_API_TOKEN;
+            const zoneId = env.CF_ZONE_ID;
+            if (!cfToken || !zoneId) return Response.json({
+                success: false,
+                error: '缺少 CF_API_TOKEN 或 CF_ZONE_ID 变量'
+            });
             try {
-                const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, { method: 'POST', headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ purge_everything: true }) });
+                const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/purge_cache`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        purge_everything: true
+                    })
+                });
                 const data = await res.json();
                 if (!data.success) throw new Error(JSON.stringify(data.errors));
-                return Response.json({ success: true });
-            } catch (e) { return Response.json({ success: false, error: e.message }); }
+                return Response.json({
+                    success: true
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                });
+            }
         }
 
         if (url.pathname === '/api/ping-node') {
             const target = url.searchParams.get('url');
-            if (!target) return Response.json({ ms: -1 });
+            if (!target) return Response.json({
+                ms: -1
+            });
             const start = Date.now();
             try {
-                const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 2000); 
-                await fetch(target + '/', { method: 'HEAD', signal: controller.signal });
-                clearTimeout(timeoutId); return Response.json({ ms: Date.now() - start });
-            } catch (e) { return Response.json({ ms: -1 }); }
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                await fetch(target + '/', {
+                    method: 'HEAD',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                return Response.json({
+                    ms: Date.now() - start
+                });
+            } catch (e) {
+                return Response.json({
+                    ms: -1
+                });
+            }
         }
 
         if (url.pathname === '/api/get-dns') {
-            const cfToken = env.CF_API_TOKEN; const zoneId = env.CF_ZONE_ID; const domain = env.CF_DOMAIN;
-            if (!cfToken || !zoneId || !domain) return Response.json({ success: false, error: '缺少 DNS 环境变量' });
+            const cfToken = env.CF_API_TOKEN;
+            const zoneId = env.CF_ZONE_ID;
+            const domain = env.CF_DOMAIN;
+            if (!cfToken || !zoneId || !domain) return Response.json({
+                success: false,
+                error: '缺少 DNS 环境变量'
+            });
             try {
-                const getRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${domain}`, { headers: { 'Authorization': `Bearer ${cfToken}` } });
+                const getRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${domain}`, {
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`
+                    }
+                });
                 const getData = await getRes.json();
-                return Response.json({ success: true, result: getData.result });
-            } catch (error) { return Response.json({ success: false, error: error.message }); }
+                return Response.json({
+                    success: true,
+                    result: getData.result
+                });
+            } catch (error) {
+                return Response.json({
+                    success: false,
+                    error: error.message
+                });
+            }
         }
 
         if (url.pathname === '/api/update-dns' && request.method === 'POST') {
-            const body = await request.json(); const ips = body.ips;
-            const cfToken = env.CF_API_TOKEN; const zoneId = env.CF_ZONE_ID; const domain = env.CF_DOMAIN;
+            const body = await request.json();
+            const ips = body.ips;
+            const cfToken = env.CF_API_TOKEN;
+            const zoneId = env.CF_ZONE_ID;
+            const domain = env.CF_DOMAIN;
 
-            if (!cfToken || !zoneId || !domain) return Response.json({ success: false, error: '缺少 DNS 环境变量' });
+            if (!cfToken || !zoneId || !domain) return Response.json({
+                success: false,
+                error: '缺少 DNS 环境变量'
+            });
             try {
-                const getRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${domain}`, { headers: { 'Authorization': `Bearer ${cfToken}` } });
+                const getRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?name=${domain}`, {
+                    headers: {
+                        'Authorization': `Bearer ${cfToken}`
+                    }
+                });
                 const getData = await getRes.json();
                 if (!getData.success) throw new Error('获取现有 DNS 记录失败');
 
                 const oldRecords = getData.result.filter(r => r.type === 'A' || r.type === 'AAAA' || r.type === 'CNAME');
                 for (const record of oldRecords) {
-                    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${record.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${cfToken}` } });
+                    await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${record.id}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Authorization': `Bearer ${cfToken}`
+                        }
+                    });
                 }
 
                 for (const ip of ips) {
-                    const cleanItem = ip.replace(/[\[\]]/g, ''); let recordType = 'A';
-                    if (cleanItem.includes(':')) recordType = 'AAAA'; else if (/[a-zA-Z]/.test(cleanItem)) recordType = 'CNAME';
+                    const cleanItem = ip.replace(/[\[\]]/g, '');
+                    let recordType = 'A';
+                    if (cleanItem.includes(':')) recordType = 'AAAA';
+                    else if (/[a-zA-Z]/.test(cleanItem)) recordType = 'CNAME';
 
-                    const postRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, { method: 'POST', headers: { 'Authorization': `Bearer ${cfToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ type: recordType, name: domain, content: cleanItem, ttl: 60, proxied: false }) });
+                    const postRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${cfToken}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            type: recordType,
+                            name: domain,
+                            content: cleanItem,
+                            ttl: 60,
+                            proxied: false
+                        })
+                    });
                     const postData = await postRes.json();
-                    if(!postData.success) throw new Error(`记录提交失败: ` + JSON.stringify(postData.errors));
+                    if (!postData.success) throw new Error(`记录提交失败: ` + JSON.stringify(postData.errors));
                 }
-                return Response.json({ success: true, message: `✅ 成功！` });
-            } catch (error) { return Response.json({ success: false, error: error.message }); }
+                return Response.json({
+                    success: true,
+                    message: `✅ 成功！`
+                });
+            } catch (error) {
+                return Response.json({
+                    success: false,
+                    error: error.message
+                });
+            }
         }
 
         if (url.pathname === '/api/get-custom-api-ips') {
             try {
                 const apiUrl = url.searchParams.get('url');
                 if (!apiUrl) throw new Error("缺少 URL");
-                const response = await fetch(apiUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                const text = await response.text(); let validIPs = new Set();
+                const response = await fetch(apiUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0'
+                    }
+                });
+                const text = await response.text();
+                let validIPs = new Set();
                 try {
                     const jsonObj = JSON.parse(text);
                     if (jsonObj && jsonObj.data && Array.isArray(jsonObj.data)) {
-                        jsonObj.data.forEach(item => { if (item.ip) { let ip = item.ip; if (ip.includes(':') && !ip.startsWith('[')) ip = `[${ip}]`; validIPs.add(ip); } });
+                        jsonObj.data.forEach(item => {
+                            if (item.ip) {
+                                let ip = item.ip;
+                                if (ip.includes(':') && !ip.startsWith('[')) ip = `[${ip}]`;
+                                validIPs.add(ip);
+                            }
+                        });
                     }
                 } catch (e) {}
 
                 if (validIPs.size === 0) {
                     const ipv4Regex = /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g;
                     const matchedIPv4 = text.match(ipv4Regex) || [];
-                    matchedIPv4.forEach(ip => { if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.')) validIPs.add(ip); });
+                    matchedIPv4.forEach(ip => {
+                        if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.')) validIPs.add(ip);
+                    });
 
                     const ipv6Regex = /(?:[A-F0-9]{1,4}:){7}[A-F0-9]{1,4}|(?:[A-F0-9]{1,4}:)*:[A-F0-9]{1,4}(?::[A-F0-9]{1,4})*/gi;
                     const matchedIPv6 = text.match(ipv6Regex) || [];
-                    matchedIPv6.forEach(ip => { if (ip.length > 7 && ip.includes(':') && !ip.startsWith('::1')) validIPs.add(ip.startsWith('[') ? ip : `[${ip}]`); });
+                    matchedIPv6.forEach(ip => {
+                        if (ip.length > 7 && ip.includes(':') && !ip.startsWith('::1')) validIPs.add(ip.startsWith('[') ? ip : `[${ip}]`);
+                    });
                 }
                 const uniqueIPArray = Array.from(validIPs);
-                for (let i = uniqueIPArray.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [uniqueIPArray[i], uniqueIPArray[j]] = [uniqueIPArray[j], uniqueIPArray[i]]; }
-                return Response.json({ success: true, ips: uniqueIPArray.slice(0, 15), totalCount: uniqueIPArray.length });
-            } catch (error) { return Response.json({ success: false, error: error.message }, { status: 500 }); }
+                for (let i = uniqueIPArray.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [uniqueIPArray[i], uniqueIPArray[j]] = [uniqueIPArray[j], uniqueIPArray[i]];
+                }
+                return Response.json({
+                    success: true,
+                    ips: uniqueIPArray.slice(0, 15),
+                    totalCount: uniqueIPArray.length
+                });
+            } catch (error) {
+                return Response.json({
+                    success: false,
+                    error: error.message
+                }, {
+                    status: 500
+                });
+            }
         }
 
         if (url.pathname === '/api/get-remote-ips') {
@@ -2269,49 +2528,91 @@ export default {
 
                 if (['all', '电信', '联通', '移动', '多线', 'ipv6'].includes(reqType)) {
                     try {
-                        const res1 = await fetch('https://api.uouin.com/cloudflare.html', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                        if(res1.ok) {
-                            const text1 = await res1.text(); const cleanText = text1.replace(/<[^>]+>/g, ' ');
+                        const res1 = await fetch('https://api.uouin.com/cloudflare.html', {
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0'
+                            }
+                        });
+                        if (res1.ok) {
+                            const text1 = await res1.text();
+                            const cleanText = text1.replace(/<[^>]+>/g, ' ');
                             const regex = /(电信|联通|移动|多线|ipv6)\s+((?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)|(?:[a-fA-F0-9]{1,4}:)+[a-fA-F0-9]{1,4})/gi;
-                            let match; while ((match = regex.exec(cleanText)) !== null) {
-                                const lineType = match[1].toLowerCase(); let ip = match[2];
+                            let match;
+                            while ((match = regex.exec(cleanText)) !== null) {
+                                const lineType = match[1].toLowerCase();
+                                let ip = match[2];
                                 if (ip.includes(':') && !ip.startsWith('[')) ip = `[${ip}]`;
                                 if (reqType === 'all' || reqType === lineType) validIPs.add(ip);
                             }
                         }
-                    } catch(e) {}
+                    } catch (e) {}
                 }
 
                 if (['all', '优选'].includes(reqType)) {
                     try {
-                        const res2 = await fetch('https://raw.githubusercontent.com/ZhiXuanWang/cf-speed-dns/refs/heads/main/ipTop10.html', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                        if(res2.ok) {
-                            const text2 = await res2.text(); const ipv4Regex = /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g;
-                            const matched = text2.match(ipv4Regex) || []; matched.forEach(ip => { if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.')) validIPs.add(ip); });
+                        const res2 = await fetch('https://raw.githubusercontent.com/ZhiXuanWang/cf-speed-dns/refs/heads/main/ipTop10.html', {
+                            headers: {
+                                'User-Agent': 'Mozilla/5.0'
+                            }
+                        });
+                        if (res2.ok) {
+                            const text2 = await res2.text();
+                            const ipv4Regex = /\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b/g;
+                            const matched = text2.match(ipv4Regex) || [];
+                            matched.forEach(ip => {
+                                if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.')) validIPs.add(ip);
+                            });
                         }
-                    } catch(e) {}
+                    } catch (e) {}
                 }
                 const uniqueIPArray = Array.from(validIPs);
-                for (let i = uniqueIPArray.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [uniqueIPArray[i], uniqueIPArray[j]] = [uniqueIPArray[j], uniqueIPArray[i]]; }
-                return Response.json({ success: true, ips: uniqueIPArray.slice(0, 10), totalCount: uniqueIPArray.length });
-            } catch (error) { return Response.json({ success: false, error: error.message }, { status: 500 }); }
+                for (let i = uniqueIPArray.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [uniqueIPArray[i], uniqueIPArray[j]] = [uniqueIPArray[j], uniqueIPArray[i]];
+                }
+                return Response.json({
+                    success: true,
+                    ips: uniqueIPArray.slice(0, 10),
+                    totalCount: uniqueIPArray.length
+                });
+            } catch (error) {
+                return Response.json({
+                    success: false,
+                    error: error.message
+                }, {
+                    status: 500
+                });
+            }
         }
 
         // ==========================================
         // 2.5 数据库路由管理 API 
         // ==========================================
         if (url.pathname === '/api/routes/reorder' && request.method === 'POST') {
-            if (!env.DB) return Response.json({ success: false, error: "未绑定 DB" });
+            if (!env.DB) return Response.json({
+                success: false,
+                error: "未绑定 DB"
+            });
             try {
-                const items = await request.json(); 
+                const items = await request.json();
                 const stmts = items.map(item => env.DB.prepare('UPDATE routes SET sort_order = ? WHERE prefix = ?').bind(item.sort_order, item.prefix));
                 await env.DB.batch(stmts);
-                return Response.json({ success: true });
-            } catch (e) { return Response.json({ success: false, error: e.message }); }
+                return Response.json({
+                    success: true
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                });
+            }
         }
 
         if (url.pathname === '/api/routes/import' && request.method === 'POST') {
-            if (!env.DB) return Response.json({ success: false, error: "未绑定 DB" });
+            if (!env.DB) return Response.json({
+                success: false,
+                error: "未绑定 DB"
+            });
             try {
                 const routes = await request.json();
                 for (const r of routes) {
@@ -2320,32 +2621,59 @@ export default {
                             .bind(r.prefix, r.target, r.mode || 'off', r.remark || '', r.last_play || '', r.icon || '', r.cache_img || 'on', r.sort_order || 0).run();
                     }
                 }
-                return Response.json({ success: true });
-            } catch (e) { return Response.json({ success: false, error: e.message }); }
+                return Response.json({
+                    success: true
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                });
+            }
         }
 
         if (url.pathname.startsWith('/api/routes')) {
-            if (!env.DB) return Response.json({ error: "由于未绑定 D1 数据库，反代功能不可用。" }, { status: 500 });
+            if (!env.DB) return Response.json({
+                error: "由于未绑定 D1 数据库，反代功能不可用。"
+            }, {
+                status: 500
+            });
 
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL)`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date))`);
             // 大数据记录核心表：访客日志
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, ua TEXT)`);
-            
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN mode TEXT DEFAULT 'off'`); } catch(e) {}
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`); } catch(e) {}
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`); } catch(e) {}
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN icon TEXT DEFAULT ''`); } catch(e) {}
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN cache_img TEXT DEFAULT 'on'`); } catch(e) {} 
-            try { await env.DB.exec(`ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`); } catch(e) {} 
-            
+
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN mode TEXT DEFAULT 'off'`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN icon TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN cache_img TEXT DEFAULT 'on'`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`);
+            } catch (e) {}
+
             // 数据防爆清理策略：自动清理过去 7 天的精细日志
-            try { await env.DB.exec(`DELETE FROM visitor_logs WHERE timestamp < datetime('now', '-7 days')`); } catch(e) {}
+            try {
+                await env.DB.exec(`DELETE FROM visitor_logs WHERE timestamp < datetime('now', '-7 days')`);
+            } catch (e) {}
 
             // 🚀 【方案A修复版】：独立并发查流，完美绕过 CF 免费版复杂度限制！
             if (request.method === 'GET') {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
-                const { results: routes } = await env.DB.prepare(`
+                const {
+                    results: routes
+                } = await env.DB.prepare(`
                     SELECT r.*, 
                     IFNULL(s.count, 0) as todayReqs,
                     (SELECT SUM(count) FROM request_stats WHERE prefix = r.prefix) as totalReqs
@@ -2384,15 +2712,18 @@ export default {
 
                             const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
                                 method: 'POST',
-                                headers: { 'Authorization': `Bearer ${env.CF_API_TOKEN}`, 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+                                    'Content-Type': 'application/json'
+                                },
                                 body: JSON.stringify(graphqlQuery)
                             });
-                            
+
                             const cfData = await cfRes.json();
-                            
+
                             // 精准提取该节点跑出的流量字节
-                            const bytes = cfData?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0]?.sum?.edgeResponseBytes || 0;
-                            
+                            const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
+
                             // 自动格式化换算单位
                             let formatted = "0 B";
                             if (bytes >= 1099511627776) formatted = (bytes / 1099511627776).toFixed(2) + " TB";
@@ -2400,79 +2731,111 @@ export default {
                             else if (bytes >= 1048576) formatted = (bytes / 1048576).toFixed(2) + " MB";
                             else if (bytes >= 1024) formatted = (bytes / 1024).toFixed(2) + " KB";
                             else if (bytes > 0) formatted = bytes + " B";
-                            
+
                             r.todayBandwidth = formatted;
-                        } catch(e) { 
-                            r.todayBandwidth = "获取异常"; 
+                        } catch (e) {
+                            r.todayBandwidth = "获取异常";
                         }
                     }));
                 }
-                
+
                 return Response.json(routes || []);
             }
-            
+
             if (request.method === 'POST') {
-                const data = await request.json(); let currentSortOrder = 0;
+                const data = await request.json();
+                let currentSortOrder = 0;
                 if (data.oldPrefix && data.oldPrefix !== data.prefix) {
                     const oldRow = await env.DB.prepare('SELECT sort_order FROM routes WHERE prefix = ?').bind(data.oldPrefix).first();
-                    if(oldRow) currentSortOrder = oldRow.sort_order;
+                    if (oldRow) currentSortOrder = oldRow.sort_order;
                     await env.DB.prepare('DELETE FROM routes WHERE prefix = ?').bind(data.oldPrefix).run();
                 } else {
                     const oldRow = await env.DB.prepare('SELECT sort_order FROM routes WHERE prefix = ?').bind(data.prefix).first();
-                    if(oldRow) currentSortOrder = oldRow.sort_order;
+                    if (oldRow) currentSortOrder = oldRow.sort_order;
                 }
-                
+
                 await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, icon, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)')
                     .bind(data.prefix, data.target, data.mode || 'off', data.remark || '', data.icon || '', data.cache_img || 'on', currentSortOrder).run();
-                return Response.json({ success: true });
+                return Response.json({
+                    success: true
+                });
             }
-            
+
             if (request.method === 'DELETE') {
-                const prefix = url.searchParams.get('prefix'); await env.DB.prepare('DELETE FROM routes WHERE prefix = ?').bind(prefix).run(); return Response.json({ success: true });
+                const prefix = url.searchParams.get('prefix');
+                await env.DB.prepare('DELETE FROM routes WHERE prefix = ?').bind(prefix).run();
+                return Response.json({
+                    success: true
+                });
             }
-            return new Response("Method not allowed", { status: 405 });
+            return new Response("Method not allowed", {
+                status: 405
+            });
         }
 
         // ==========================================
         // 2.6 核心反代与调度引擎
         // ==========================================
-        let targetUrls = []; let currentMode = 'off'; let enableCache = true; let remainingPath = '';
-        const decodedPath = decodeURIComponent(url.pathname); let matchedPrefix = null; 
+        let targetUrls = [];
+        let currentMode = 'off';
+        let enableCache = true;
+        let remainingPath = '';
+        const decodedPath = decodeURIComponent(url.pathname);
+        let matchedPrefix = null;
         let proxyOrigin = new URL(request.url).origin;
 
         if (decodedPath.startsWith('/http://') || decodedPath.startsWith('/https://')) {
-            targetUrls = [decodedPath.substring(1)]; remainingPath = '';
+            targetUrls = [decodedPath.substring(1)];
+            remainingPath = '';
         } else {
-            const pathParts = decodedPath.split('/'); const prefix = pathParts[1]; 
-            if (!prefix) return new Response(`Not Found`, { status: 404 });
+            const pathParts = decodedPath.split('/');
+            const prefix = pathParts[1];
+            if (!prefix) return new Response(`Not Found`, {
+                status: 404
+            });
 
             try {
-                if (!env.DB) return new Response(`404: Node not found (DB not bound)`, { status: 404 });
+                if (!env.DB) return new Response(`404: Node not found (DB not bound)`, {
+                    status: 404
+                });
                 const stmt = env.DB.prepare(`SELECT target, mode, cache_img FROM routes WHERE prefix = ?`);
                 const route = await stmt.bind(prefix).first();
-                if (!route) return new Response(`404: Node not found`, { status: 404 });
+                if (!route) return new Response(`404: Node not found`, {
+                    status: 404
+                });
 
-                currentMode = route.mode || 'off'; enableCache = (route.cache_img !== 'off');
-                matchedPrefix = prefix; remainingPath = '/' + pathParts.slice(2).join('/');
+                currentMode = route.mode || 'off';
+                enableCache = (route.cache_img !== 'off');
+                matchedPrefix = prefix;
+                remainingPath = '/' + pathParts.slice(2).join('/');
                 targetUrls = route.target.split(',').map(s => s.trim()).filter(Boolean);
-                
-                if (remainingPath.startsWith('/http://') || remainingPath.startsWith('/https://')) { targetUrls = [remainingPath.substring(1)]; remainingPath = ''; }
-            } catch (e) { return new Response("DB Error: " + e.message, { status: 500 }); }
+
+                if (remainingPath.startsWith('/http://') || remainingPath.startsWith('/https://')) {
+                    targetUrls = [remainingPath.substring(1)];
+                    remainingPath = '';
+                }
+            } catch (e) {
+                return new Response("DB Error: " + e.message, {
+                    status: 500
+                });
+            }
         }
 
-        if (targetUrls.length === 0) return new Response("404: Target empty", { status: 404 });
+        if (targetUrls.length === 0) return new Response("404: Target empty", {
+            status: 404
+        });
 
         // ==========================================
         // 2.7 防爆型精准日志拦截 (修复统计虚高：仅拦截点火请求)
         // ==========================================
-        const isNewPlaySession = /\/PlaybackInfo/i.test(url.pathname); 
+        const isNewPlaySession = /\/PlaybackInfo/i.test(url.pathname);
 
         // 核心修改：仅在点火请求时才记录 "今日播放" 和 "最后活跃"
         if (isNewPlaySession && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
             try {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
-                const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0]; 
-                
+                const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
+
                 let stmts = [
                     env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) VALUES (?, ?, 1) ON CONFLICT(prefix, date) DO UPDATE SET count = count + 1`).bind(matchedPrefix, todayStr),
                     env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix)
@@ -2484,7 +2847,7 @@ export default {
                 stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, ua) VALUES (?, ?, ?, ?)`).bind(matchedPrefix, clientIp, clientCountry, clientUa));
 
                 ctx.waitUntil(env.DB.batch(stmts));
-            } catch(e) {}
+            } catch (e) {}
         }
 
         // ==========================================
@@ -2497,47 +2860,85 @@ export default {
             bodyBuffer = await request.clone().arrayBuffer();
         }
 
-        let finalResponse = null; let lastError = null;
+        let finalResponse = null;
+        let lastError = null;
 
         for (let i = 0; i < targetUrls.length; i++) {
-            const targetUrlStr = targetUrls[i] + remainingPath + url.search; const targetUrl = new URL(targetUrlStr);
-            const newHeaders = new Headers(request.headers); newHeaders.set("Host", targetUrl.host);
+            const targetUrlStr = targetUrls[i] + remainingPath + url.search;
+            const targetUrl = new URL(targetUrlStr);
+            const newHeaders = new Headers(request.headers);
+            newHeaders.set("Host", targetUrl.host);
 
             const realIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || (request.headers.get("x-forwarded-for") || "").split(',')[0].trim();
-            newHeaders.delete("cf-connecting-ip"); newHeaders.delete("cf-ipcountry"); newHeaders.delete("cf-ray");
-            newHeaders.delete("cf-visitor"); newHeaders.delete("x-forwarded-for"); newHeaders.delete("x-real-ip");
+            newHeaders.delete("cf-connecting-ip");
+            newHeaders.delete("cf-ipcountry");
+            newHeaders.delete("cf-ray");
+            newHeaders.delete("cf-visitor");
+            newHeaders.delete("x-forwarded-for");
+            newHeaders.delete("x-real-ip");
 
-            if (currentMode === 'realip_only' && realIp) { newHeaders.set("X-Real-IP", realIp); } 
-            else if (currentMode === 'dual' && realIp) { newHeaders.set("X-Real-IP", realIp); newHeaders.set("X-Forwarded-For", realIp); }
-            else if (isStrictMode) {
+            if (currentMode === 'realip_only' && realIp) {
+                newHeaders.set("X-Real-IP", realIp);
+            } else if (currentMode === 'dual' && realIp) {
+                newHeaders.set("X-Real-IP", realIp);
+                newHeaders.set("X-Forwarded-For", realIp);
+            } else if (isStrictMode) {
                 // 强力防 403 模式：强制清空原始端代理参数，对齐 Origin
-                newHeaders.delete("X-Forwarded-Proto"); newHeaders.delete("X-Forwarded-Host");
-                newHeaders.set("Origin", targetUrl.origin); newHeaders.set("Referer", targetUrl.origin + "/");
-                if (realIp) { newHeaders.set("X-Real-IP", realIp); newHeaders.set("X-Forwarded-For", realIp); }
+                newHeaders.delete("X-Forwarded-Proto");
+                newHeaders.delete("X-Forwarded-Host");
+                newHeaders.set("Origin", targetUrl.origin);
+                newHeaders.set("Referer", targetUrl.origin + "/");
+                if (realIp) {
+                    newHeaders.set("X-Real-IP", realIp);
+                    newHeaders.set("X-Forwarded-For", realIp);
+                }
             }
 
             const isStaticOrImage = /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(targetUrl.pathname) || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/)/i.test(targetUrl.pathname);
 
-            let fetchInit = { method: request.method, headers: newHeaders, redirect: 'manual' };
+            let fetchInit = {
+                method: request.method,
+                headers: newHeaders,
+                redirect: 'manual'
+            };
 
-            if (isStaticOrImage && enableCache) { fetchInit.cf = { cacheEverything: true, cacheTtl: 86400 }; }
+            if (isStaticOrImage && enableCache) {
+                fetchInit.cf = {
+                    cacheEverything: true,
+                    cacheTtl: 86400
+                };
+            }
 
             if (request.method !== 'GET' && request.method !== 'HEAD') {
-                if (targetUrls.length > 1) { fetchInit.body = bodyBuffer; } 
-                else { fetchInit.body = request.body; fetchInit.duplex = 'half'; }
+                if (targetUrls.length > 1) {
+                    fetchInit.body = bodyBuffer;
+                } else {
+                    fetchInit.body = request.body;
+                    fetchInit.duplex = 'half';
+                }
             }
 
             try {
-                const modifiedRequest = new Request(targetUrl, fetchInit); const response = await fetch(modifiedRequest);
-                if (response.status === 502 || response.status === 503 || response.status === 504) { lastError = new Error(`Node ${i+1} returned HTTP ${response.status}`); continue; }
-                finalResponse = response; break; 
-            } catch (err) { lastError = err; continue; }
+                const modifiedRequest = new Request(targetUrl, fetchInit);
+                const response = await fetch(modifiedRequest);
+                if (response.status === 502 || response.status === 503 || response.status === 504) {
+                    lastError = new Error(`Node ${i+1} returned HTTP ${response.status}`);
+                    continue;
+                }
+                finalResponse = response;
+                break;
+            } catch (err) {
+                lastError = err;
+                continue;
+            }
         }
 
-        if (!finalResponse) return new Response("Worker Proxy Failover Exhausted. All nodes failed. Last Error: " + (lastError?.message || 'Unknown Error'), { status: 502 });
+        if (!finalResponse) return new Response("Worker Proxy Failover Exhausted. All nodes failed. Last Error: " + (lastError?.message || 'Unknown Error'), {
+            status: 502
+        });
 
         const responseHeaders = new Headers(finalResponse.headers);
-        
+
         // 统一前缀变量，确保绝对安全，不会抛出未定义错误
         // 假设你前面获取路由节点的变量叫 matchedPrefix，如果有值就带上斜杠
         const safePrefix = matchedPrefix ? `/${matchedPrefix}` : '';
@@ -2552,7 +2953,7 @@ export default {
                 responseHeaders.set('Location', `${safePrefix}/${encodeURIComponent(location)}`);
             }
         }
-        
+
         responseHeaders.set('Access-Control-Allow-Origin', '*');
 
         // ==========================================
@@ -2561,23 +2962,27 @@ export default {
 
         if (finalResponse.status === 200 && responseHeaders.get("content-type")?.includes("json") && url.pathname.toLowerCase().includes("playbackinfo")) {
             try {
-                let clonedRes = finalResponse.clone(); 
-                let data = await clonedRes.json(); 
+                let clonedRes = finalResponse.clone();
+                let data = await clonedRes.json();
                 let modified = false;
                 if (data && data.MediaSources) {
                     data.MediaSources.forEach(source => {
                         ['DirectStreamUrl', 'TranscodingUrl'].forEach(key => {
-                            if (source[key] && source[key].startsWith('http')) { 
+                            if (source[key] && source[key].startsWith('http')) {
                                 // 🎯 统一使用 safePrefix，杜绝 ReferenceError 导致重写崩溃
-                                source[key] = proxyOrigin + safePrefix + '/' + source[key]; 
-                                modified = true; 
+                                source[key] = proxyOrigin + safePrefix + '/' + source[key];
+                                modified = true;
                             }
                         });
                     });
                 }
-                if (modified) { 
-                    responseHeaders.delete("Content-Length"); 
-                    return new Response(JSON.stringify(data), { status: finalResponse.status, statusText: finalResponse.statusText, headers: responseHeaders }); 
+                if (modified) {
+                    responseHeaders.delete("Content-Length");
+                    return new Response(JSON.stringify(data), {
+                        status: finalResponse.status,
+                        statusText: finalResponse.statusText,
+                        headers: responseHeaders
+                    });
                 }
             } catch (e) {
                 // 别再隐式吞报错了，如果出问题，可以在 Worker 日志里看得到
@@ -2588,15 +2993,19 @@ export default {
         // 🚀 处理 M3U8 播放列表中的真实视频切片链接
         if (finalResponse.status === 200 && url.pathname.toLowerCase().endsWith('.m3u8')) {
             try {
-                let clonedRes = finalResponse.clone(); 
+                let clonedRes = finalResponse.clone();
                 let text = await clonedRes.text();
                 if (text.includes('http://') || text.includes('https://')) {
                     // 🎯 同样修复变量名
                     let modifiedText = text.replace(/(https?:\/\/[^\s]+)/g, proxyOrigin + safePrefix + '/$1');
-                    responseHeaders.delete("Content-Length"); 
-                    return new Response(modifiedText, { status: finalResponse.status, statusText: finalResponse.statusText, headers: responseHeaders });
+                    responseHeaders.delete("Content-Length");
+                    return new Response(modifiedText, {
+                        status: finalResponse.status,
+                        statusText: finalResponse.statusText,
+                        headers: responseHeaders
+                    });
                 }
-            } catch(e) {
+            } catch (e) {
                 console.log("M3U8 重写失败:", e.message);
             }
         }
@@ -2604,13 +3013,17 @@ export default {
         // 静态资源缓存控制保持不变
         const isStaticRes = /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(url.pathname) || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/)/i.test(url.pathname);
         if (isStaticRes && enableCache) {
-            responseHeaders.set('Cache-Control', 'public, max-age=86400'); 
-            responseHeaders.delete('Expires'); 
-            responseHeaders.delete('Pragma');  
-        } else { 
-            responseHeaders.set('Cache-Control', 'no-store'); 
+            responseHeaders.set('Cache-Control', 'public, max-age=86400');
+            responseHeaders.delete('Expires');
+            responseHeaders.delete('Pragma');
+        } else {
+            responseHeaders.set('Cache-Control', 'no-store');
         }
 
-        return new Response(finalResponse.body, { status: finalResponse.status, statusText: finalResponse.statusText, headers: responseHeaders });
+        return new Response(finalResponse.body, {
+            status: finalResponse.status,
+            statusText: finalResponse.statusText,
+            headers: responseHeaders
+        });
     }
 };
