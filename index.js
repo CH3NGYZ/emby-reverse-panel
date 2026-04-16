@@ -101,6 +101,11 @@ const CSS_COMMON = `
     .watch-edit-input { width: 92px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
     .watch-save-btn { padding: 8px 12px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
     .watch-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .watch-desktop-summary { display: block; }
+    .watch-mobile-inline { display: none; }
+    .watch-mobile-summary { display: none; }
+    .watch-mobile-toggle { display: none; }
+    .watch-mobile-detail { display: none; }
     .emby-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.02); display: flex; flex-direction: column; gap: 14px; transition: 0.3s; position: relative; }
     .emby-card:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.06); transform: translateY(-2px); }
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
@@ -146,6 +151,30 @@ const CSS_COMMON = `
         td[colspan] { justify-content: center; text-align: center; }
         td[colspan]::before { display: none !important; }
         td::before { content: attr(data-label); font-weight: 600; color: var(--text-sec); flex-shrink: 0; margin-right: auto; text-align: left; }
+        .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="名字"], .watch-report-row td[data-label="保号要求"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="预计检测"] { display: none; }
+        .watch-report-row td[data-label="保号天数"] { display: none; }
+        .watch-report-row td[data-label="保号倒计时"] { display: block; text-align: left; padding: 16px; }
+        .watch-report-row td[data-label="保号倒计时"]::before { display: none; }
+        .watch-desktop-summary { display: none; }
+        .watch-mobile-summary { display: flex; flex-direction: column; gap: 12px; cursor: pointer; }
+        .watch-mobile-inline { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+        .watch-mobile-inline .watch-table-name { font-size: 15px; }
+        .watch-mobile-inline .watch-table-sub { margin-top: 2px; white-space: nowrap; }
+        .watch-mobile-name-wrap { min-width: 0; }
+        .watch-mobile-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+        .watch-mobile-countdown .watch-countdown { font-size: 22px; }
+        .watch-mobile-name-wrap .watch-table-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .watch-mobile-status-row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+        .watch-mobile-meta { min-width: 86px; text-align: right; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+        .watch-mobile-toggle { display: none; }
+        .watch-mobile-detail { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
+        .watch-mobile-detail.open { display: block; }
+        .watch-mobile-detail-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 13px; }
+        .watch-mobile-detail-label { color: var(--text-sec); font-weight: 600; }
+        .watch-mobile-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+        .watch-mobile-edit .watch-edit-input { flex: 1 1 90px; width: auto; }
+        .watch-mobile-edit .watch-save-btn { flex: 0 0 auto; }
+        .watch-mobile-detail * { pointer-events: auto; }
         
         #dashboardModal { padding: 10px !important; }
         #dashboardModal .card { margin: 10px auto !important; padding: 16px !important; box-sizing: border-box; }
@@ -306,7 +335,7 @@ const HTML_UI = `
                                 <tr>
                                     <th style="width: 72px;">图标</th>
                                     <th>名字</th>
-                                    <th>观看报告</th>
+                                    <th>保号要求</th>
                                     <th>保号天数</th>
                                     <th>上次观看</th>
                                     <th>预计检测</th>
@@ -840,6 +869,17 @@ const HTML_UI = `
             return Number.isNaN(parsed.getTime()) ? null : parsed;
         }
 
+        function formatDisplayDateTime(dateTimeInput) {
+            const parsed = dateTimeInput instanceof Date ? dateTimeInput : parseBeijingDateTime(dateTimeInput);
+            if (!parsed) return '-';
+            const year = parsed.getFullYear();
+            const month = String(parsed.getMonth() + 1).padStart(2, '0');
+            const day = String(parsed.getDate()).padStart(2, '0');
+            const hours = String(parsed.getHours()).padStart(2, '0');
+            const minutes = String(parsed.getMinutes()).padStart(2, '0');
+            return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
+        }
+
         function formatCountdownText(diffMs) {
             if (diffMs <= 0) return '0天 0小时';
             const totalHours = Math.ceil(diffMs / 3600000);
@@ -878,13 +918,13 @@ const HTML_UI = `
             if (diffMs <= 86400000) colorClass = 'watch-countdown-danger';
             else if (diffMs <= 259200000) colorClass = 'watch-countdown-warning';
 
-            return {
-                modeText: reportDays + ' 天检测',
-                countdownText: formatCountdownText(diffMs),
-                nextCheckText: nextCheck.toLocaleString('zh-CN', { hour12: false }),
-                colorClass: colorClass
-            };
-        }
+                return {
+                    modeText: reportDays + ' 天检测',
+                    countdownText: formatCountdownText(diffMs),
+                    nextCheckText: formatDisplayDateTime(nextCheck),
+                    colorClass: colorClass
+                };
+            }
 
         function renderWatchReportPanel(routes) {
             const container = document.getElementById('watch-report-grid');
@@ -897,17 +937,21 @@ const HTML_UI = `
             container.innerHTML = routes.map(route => {
                 const remarkName = route.remark || '未命名媒体库';
                 const reportDays = parseWatchReportDays(route.watch_report);
+                const reportText = reportDays === 0 ? '无需保号' : (reportDays + ' 天');
                 const status = calcWatchReportStatus(route);
                 const iconHtml = route.icon ? '<img src="' + route.icon + '" class="watch-table-icon">' : '<span class="watch-table-icon">🎬</span>';
+                const lastPlayText = formatDisplayDateTime(route.last_play);
+                const mobileDetailId = 'watch-detail-' + route.prefix;
+                const mobileInputId = 'watch-inline-mobile-' + route.prefix;
                 return \`
-                    <tr>
+                    <tr class="watch-report-row">
                         <td data-label="图标">\${iconHtml}</td>
                         <td data-label="名字">
                             <div class="watch-table-name">\${remarkName}</div>
                             <div class="watch-table-sub">/\${route.prefix}</div>
                         </td>
-                        <td data-label="观看报告">
-                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportDays === 0 ? '默认 0' : ('0+' + reportDays)}</span>
+                        <td data-label="保号要求">
+                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportText}</span>
                         </td>
                         <td data-label="保号天数">
                             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
@@ -915,15 +959,59 @@ const HTML_UI = `
                                 <button type="button" class="watch-save-btn" onclick="saveWatchReportDays('\${route.prefix}', this)">保存</button>
                             </div>
                         </td>
-                        <td data-label="上次观看">\${route.last_play || '暂无播放记录'}</td>
+                        <td data-label="上次观看">\${lastPlayText}</td>
                         <td data-label="预计检测">\${status.nextCheckText}</td>
-                        <td data-label="保号倒计时"><span class="watch-countdown \${status.colorClass}">\${status.countdownText}</span><div class="watch-table-sub">\${status.modeText}</div></td>
+                        <td data-label="保号倒计时">
+                            <div class="watch-mobile-summary" onclick="toggleWatchDetail('\${mobileDetailId}', this.querySelector('.watch-mobile-toggle'))">
+                                <div class="watch-mobile-top">
+                                    <div class="watch-mobile-inline">
+                                        \${iconHtml}
+                                        <div class="watch-mobile-name-wrap">
+                                            <div class="watch-table-name">\${remarkName}</div>
+                                            <div class="watch-table-sub">\${route.prefix}</div>
+                                        </div>
+                                    </div>
+                                    <div class="watch-mobile-status-row">
+                                        <div class="watch-mobile-meta">
+                                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportText}</span>
+                                        </div>
+                                        <div class="watch-mobile-meta">
+                                            <span class="watch-countdown \${status.colorClass}">\${status.countdownText}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="\${mobileDetailId}" class="watch-mobile-detail" onclick="event.stopPropagation()">
+                                    <div class="watch-mobile-detail-row">
+                                        <span class="watch-mobile-detail-label">上次观看</span>
+                                        <span>\${lastPlayText}</span>
+                                    </div>
+                                    <div class="watch-mobile-detail-row">
+                                        <span class="watch-mobile-detail-label">预计检测</span>
+                                        <span>\${status.nextCheckText}</span>
+                                    </div>
+                                    <div class="watch-mobile-edit">
+                                        <input type="number" min="0" step="1" value="\${reportDays}" class="watch-edit-input" id="\${mobileInputId}">
+                                        <button type="button" class="watch-save-btn" onclick="saveWatchReportDays('\${route.prefix}', this, '\${mobileInputId}')">保存</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="watch-desktop-summary">
+                                <span class="watch-countdown \${status.colorClass}">\${status.countdownText}</span>
+                            </div>
+                        </td>
                     </tr>\`;
             }).join('');
         }
 
-        async function saveWatchReportDays(prefix, btn) {
-            const input = document.getElementById('watch-inline-' + prefix);
+        function toggleWatchDetail(detailId, btn) {
+            const detail = document.getElementById(detailId);
+            if (!detail) return;
+            const isOpen = detail.classList.toggle('open');
+            if (btn) btn.textContent = isOpen ? '收起详情' : '展开详情';
+        }
+
+        async function saveWatchReportDays(prefix, btn, inputId) {
+            const input = document.getElementById(inputId || ('watch-inline-' + prefix));
             const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
             if (!input || !route) return showToast('❌ 节点数据不存在，无法保存');
 
@@ -958,6 +1046,30 @@ const HTML_UI = `
                 btn.textContent = originalText;
                 showToast('❌ 保存失败: ' + err.message);
             }
+        }
+
+        async function loadSingleRouteBandwidth(prefix) {
+            try {
+                const res = await fetch('/api/routes/bandwidth?prefix=' + encodeURIComponent(prefix));
+                if (!res.ok) return;
+                const data = await res.json();
+                const todayBandwidth = data && data.todayBandwidth ? data.todayBandwidth : '0 B';
+
+                if (Array.isArray(window.globalRoutesData)) {
+                    const route = window.globalRoutesData.find(item => item.prefix === prefix);
+                    if (route) route.todayBandwidth = todayBandwidth;
+                }
+
+                const el = document.getElementById('bandwidth-' + prefix);
+                if (el) el.textContent = todayBandwidth;
+            } catch (e) {}
+        }
+
+        function loadRouteBandwidth(prefixes) {
+            if (!Array.isArray(prefixes) || prefixes.length === 0) return;
+            prefixes.forEach((prefix, index) => {
+                setTimeout(() => loadSingleRouteBandwidth(prefix), index * 120);
+            });
         }
 
         function handleTargetInputs() {
@@ -1087,8 +1199,8 @@ const HTML_UI = `
                     const iconHtml = r.icon ? \`<img src="\${r.icon}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;">\` : '🎬';
                     const encodedTargets = encodeURIComponent(JSON.stringify(targets));
                     
-                    // 🌟 接收后端传来的：单节点独立宽带与请求统计数据
-                    const todayBw = r.todayBandwidth || '0 B';
+                    // 今日流量改为异步补写，避免 /api/routes 阻塞
+                    const todayBw = r.todayBandwidth || '加载中...';
                     const totalReqs = r.totalReqs || r.todayReqs || 0;
 
                     proxyNodesForPing.push({ idx: idx, url: mainTarget });
@@ -1113,7 +1225,7 @@ const HTML_UI = `
                         <div style="background: rgba(120,120,120,0.05); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
                             <div style="display:flex; flex-direction: column; gap: 4px;">
                                 <span style="font-size:12px; color:var(--text-sec);">⬇️ 今日产生总流量</span>
-                                <span style="font-size:16px; font-weight:700; color:var(--primary);">\${todayBw}</span>
+                                <span id="bandwidth-\${r.prefix}" style="font-size:16px; font-weight:700; color:var(--primary);">\${todayBw}</span>
                             </div>
                             <div style="display:flex; flex-direction: column; gap: 4px; text-align: right;">
                                 <span style="font-size:12px; color:var(--text-sec);">📺 播放次数 (今日/累计)</span>
@@ -1161,6 +1273,7 @@ const HTML_UI = `
                 });
                 
                 filterNodesList();
+                loadRouteBandwidth(data.map(item => item.prefix));
 
                 if (sortableInstance) sortableInstance.destroy();
                 sortableInstance = Sortable.create(container, {
@@ -2799,6 +2912,88 @@ export default {
             }
         }
 
+        if (url.pathname === '/api/routes/bandwidth' && request.method === 'GET') {
+            if (!env.DB) return Response.json({
+                prefix: '',
+                todayBandwidth: '0 B'
+            }, {
+                status: 200
+            });
+
+            try {
+                const prefix = (url.searchParams.get('prefix') || '').trim();
+                if (!prefix) {
+                    return Response.json({
+                        prefix: '',
+                        todayBandwidth: '0 B'
+                    });
+                }
+
+                const route = await env.DB.prepare(`SELECT prefix FROM routes WHERE prefix = ?`).bind(prefix).first();
+                if (!route || !env.CF_API_TOKEN || !env.CF_ZONE_ID) {
+                    return Response.json({
+                        prefix: prefix,
+                        todayBandwidth: '0 B'
+                    });
+                }
+
+                const end = new Date();
+                const beijingTime = new Date(end.getTime() + 8 * 3600000);
+                beijingTime.setUTCHours(0, 0, 0, 0);
+                const start = new Date(beijingTime.getTime() - 8 * 3600000);
+
+                const graphqlQuery = {
+                    query: `query {
+                      viewer {
+                        zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
+                          httpRequestsAdaptiveGroups(
+                            limit: 1,
+                            filter: {
+                              clientRequestPath_like: "/${prefix}%",
+                              datetime_geq: "${start.toISOString()}",
+                              datetime_leq: "${end.toISOString()}"
+                            }
+                          ) {
+                            sum { edgeResponseBytes }
+                          }
+                        }
+                      }
+                    }`
+                };
+
+                const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(graphqlQuery)
+                });
+
+                const cfData = await cfRes.json();
+                const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
+
+                let formatted = '0 B';
+                if (bytes >= 1099511627776) formatted = (bytes / 1099511627776).toFixed(2) + ' TB';
+                else if (bytes >= 1073741824) formatted = (bytes / 1073741824).toFixed(2) + ' GB';
+                else if (bytes >= 1048576) formatted = (bytes / 1048576).toFixed(2) + ' MB';
+                else if (bytes >= 1024) formatted = (bytes / 1024).toFixed(2) + ' KB';
+                else if (bytes > 0) formatted = bytes + ' B';
+
+                return Response.json({
+                    prefix: prefix,
+                    todayBandwidth: formatted
+                });
+            } catch (e) {
+                return Response.json({
+                    prefix: (url.searchParams.get('prefix') || '').trim(),
+                    todayBandwidth: '获取异常'
+                }, {
+                    status: 200
+                });
+            }
+        }
+
         if (url.pathname.startsWith('/api/routes')) {
             if (!env.DB) return Response.json({
                 error: "由于未绑定 D1 数据库，反代功能不可用。"
@@ -2851,63 +3046,6 @@ export default {
                     LEFT JOIN request_stats s ON r.prefix = s.prefix AND s.date = ? 
                     ORDER BY r.sort_order ASC, r.prefix ASC
                 `).bind(todayStr).all();
-
-                if (env.CF_API_TOKEN && env.CF_ZONE_ID && routes && routes.length > 0) {
-                    const end = new Date();
-                    const beijingTime = new Date(end.getTime() + 8 * 3600000);
-                    beijingTime.setUTCHours(0, 0, 0, 0);
-                    const start = new Date(beijingTime.getTime() - 8 * 3600000);
-
-                    // 核心修复：将“一条复杂查询”拆解为 Promise.all 并发单体查询，并且 limit 设为严格的 1
-                    await Promise.all(routes.map(async (r) => {
-                        try {
-                            const graphqlQuery = {
-                                query: `query {
-                                  viewer {
-                                    zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
-                                      httpRequestsAdaptiveGroups(
-                                        limit: 1,
-                                        filter: {
-                                          clientRequestPath_like: "/${r.prefix}%",
-                                          datetime_geq: "${start.toISOString()}",
-                                          datetime_leq: "${end.toISOString()}"
-                                        }
-                                      ) {
-                                        sum { edgeResponseBytes }
-                                      }
-                                    }
-                                  }
-                                }`
-                            };
-
-                            const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${env.CF_API_TOKEN}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(graphqlQuery)
-                            });
-
-                            const cfData = await cfRes.json();
-
-                            // 精准提取该节点跑出的流量字节
-                            const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
-
-                            // 自动格式化换算单位
-                            let formatted = "0 B";
-                            if (bytes >= 1099511627776) formatted = (bytes / 1099511627776).toFixed(2) + " TB";
-                            else if (bytes >= 1073741824) formatted = (bytes / 1073741824).toFixed(2) + " GB";
-                            else if (bytes >= 1048576) formatted = (bytes / 1048576).toFixed(2) + " MB";
-                            else if (bytes >= 1024) formatted = (bytes / 1024).toFixed(2) + " KB";
-                            else if (bytes > 0) formatted = bytes + " B";
-
-                            r.todayBandwidth = formatted;
-                        } catch (e) {
-                            r.todayBandwidth = "获取异常";
-                        }
-                    }));
-                }
 
                 return Response.json(routes || []);
             }
