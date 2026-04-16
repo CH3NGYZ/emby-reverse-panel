@@ -98,9 +98,9 @@ const CSS_COMMON = `
     .watch-countdown-danger { color: #ff3b30; }
     .watch-countdown-warning { color: #ff9500; }
     .watch-countdown-safe { color: #34c759; }
-    .watch-edit-input { width: 92px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
-    .watch-save-btn { padding: 8px 12px; border: none; border-radius: 8px; background: var(--primary); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
-    .watch-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .watch-edit-input { width: 60px; padding: 8px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 13px; }
+    .watch-edit-trigger { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+    .watch-inline-editor { display: inline-flex; align-items: center; gap: 8px; }
     .watch-desktop-summary { display: block; }
     .watch-mobile-inline { display: none; }
     .watch-mobile-summary { display: none; }
@@ -151,29 +151,31 @@ const CSS_COMMON = `
         td[colspan] { justify-content: center; text-align: center; }
         td[colspan]::before { display: none !important; }
         td::before { content: attr(data-label); font-weight: 600; color: var(--text-sec); flex-shrink: 0; margin-right: auto; text-align: left; }
-        .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="名字"], .watch-report-row td[data-label="保号要求"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="预计检测"] { display: none; }
+        .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="服名"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="下次检测"] { display: none; }
         .watch-report-row td[data-label="保号天数"] { display: none; }
-        .watch-report-row td[data-label="保号倒计时"] { display: block; text-align: left; padding: 16px; }
-        .watch-report-row td[data-label="保号倒计时"]::before { display: none; }
+        .watch-report-row td[data-label="倒计时"] { display: block; text-align: left; padding: 16px; }
+        .watch-report-row td[data-label="倒计时"]::before { display: none; }
         .watch-desktop-summary { display: none; }
         .watch-mobile-summary { display: flex; flex-direction: column; gap: 12px; cursor: pointer; }
-        .watch-mobile-inline { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+        .watch-mobile-inline { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; overflow: hidden; }
         .watch-mobile-inline .watch-table-name { font-size: 15px; }
-        .watch-mobile-inline .watch-table-sub { margin-top: 2px; white-space: nowrap; }
-        .watch-mobile-name-wrap { min-width: 0; }
+        .watch-mobile-inline .watch-table-sub { margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .watch-mobile-name-wrap { min-width: 0; flex: 1; overflow: hidden; }
         .watch-mobile-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
         .watch-mobile-countdown .watch-countdown { font-size: 22px; }
         .watch-mobile-name-wrap .watch-table-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .watch-mobile-status-row { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-        .watch-mobile-meta { min-width: 86px; text-align: right; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+        .watch-mobile-status-row { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-shrink: 0; }
+        .watch-mobile-meta { min-width: 1px; text-align: right; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex: 0 1 auto; }
         .watch-mobile-toggle { display: none; }
         .watch-mobile-detail { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
         .watch-mobile-detail.open { display: block; }
         .watch-mobile-detail-row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 13px; }
         .watch-mobile-detail-label { color: var(--text-sec); font-weight: 600; }
-        .watch-mobile-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-        .watch-mobile-edit .watch-edit-input { flex: 1 1 90px; width: auto; }
-        .watch-mobile-edit .watch-save-btn { flex: 0 0 auto; }
+        .watch-mobile-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 0px; }
+        .watch - mobile - edit.watch - edit - input {
+            width: 56 px;padding: 6 px 8 px;border: 1 px solid
+            var (--border);border - radius: 8 px;background: var (--card);color: var (--text);font - size: 13 px;
+        }
         .watch-mobile-detail * { pointer-events: auto; }
         
         #dashboardModal { padding: 10px !important; }
@@ -326,7 +328,7 @@ const HTML_UI = `
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                         <div>
                             <h2 style="margin:0; font-size:18px;">保号检测面板</h2>
-                            <div style="margin-top:6px; font-size:13px; color: var(--text-sec);">按每个节点的观看报告天数与上次真实观看时间，计算距离下次凌晨 0 点 检测还剩多久。</div>
+                            <div style="margin-top:6px; font-size:13px; color: var(--text-sec);">按每个服务器的保号要求与上次真实观看时间，计算距离下次凌晨 0 点 检测还剩多久。</div>
                         </div>
                     </div>
                     <div class="table-wrapper">
@@ -334,16 +336,15 @@ const HTML_UI = `
                             <thead>
                                 <tr>
                                     <th style="width: 72px;">图标</th>
-                                    <th>名字</th>
-                                    <th>保号要求</th>
-                                    <th>保号天数</th>
+                                    <th>服名</th>
                                     <th>上次观看</th>
-                                    <th>预计检测</th>
-                                    <th>保号倒计时</th>
+                                    <th>下次检测</th>
+                                    <th>保号天数</th>
+                                    <th>倒计时</th>
                                 </tr>
                             </thead>
                             <tbody id="watch-report-grid">
-                                <tr><td colspan="7" style="text-align:center; color:var(--text-sec); padding: 20px;">读取数据中...</td></tr>
+                                <tr><td colspan="6" style="text-align:center; color:var(--text-sec); padding: 20px;">读取数据中...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -399,7 +400,7 @@ const HTML_UI = `
                             <option value="dual">兼容 (双重透传)</option>
                             <option value="strict">强力 (防403)</option>
                         </select>
-                        <input type="number" id="watchReport" min="0" step="1" placeholder="观看报告天数 (0=无需保号)" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background:var(--card); flex: 1;">
+                        <input type="number" id="watchReport" min="0" step="1" placeholder="保号天数 (0=无)" style="padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background:var(--card); flex: 1;">
                     </div>
 
                     <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
@@ -888,80 +889,87 @@ const HTML_UI = `
             return days + '天 ' + hours + '小时';
         }
 
-        function calcWatchReportStatus(route) {
-            const reportDays = parseWatchReportDays(route.watch_report);
-            if (reportDays === 0) {
-                return {
-                    modeText: '无需观看保号',
-                    countdownText: '无需检测',
-                    nextCheckText: '-',
-                    colorClass: 'watch-countdown-safe'
-                };
-            }
+        function renderWatchRequirementCell(prefix, reportDays, reportText, inputId, mobile) {
+            const wrapperClass = mobile ? 'watch-mobile-edit' : 'watch-inline-editor';
+            const triggerClass = mobile ? 'watch-edit-trigger watch-mobile-edit' : 'watch-edit-trigger';
+            return \`
+                <div id="watch-display-\${inputId}" class="\${triggerClass}" onclick="startWatchReportEdit('\${prefix}', '\${inputId}', \${mobile ? 'true' : 'false'}); event.stopPropagation();">
+                    <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportText}</span>
+                </div>
+                <div id="watch-editor-\${inputId}" class="\${wrapperClass}" style="display:none;" onclick="event.stopPropagation();">
+                    <input type="number" min="0" step="1" value="\${reportDays}" class="watch-edit-input" id="\${inputId}" onblur="handleWatchReportBlur('\${prefix}', '\${inputId}', \${mobile ? 'true' : 'false'})" onkeydown="handleWatchReportKeydown(event, '\${prefix}', '\${inputId}', \${mobile ? 'true' : 'false'})">
+                </div>\`;
+        }
 
-            const lastPlayDate = parseBeijingDateTime(route.last_play);
-            if (!lastPlayDate) {
-                return {
-                    modeText: reportDays + ' 天检测',
-                    countdownText: '等待首播',
-                    nextCheckText: '-',
-                    colorClass: 'watch-countdown-warning'
-                };
-            }
+function calcWatchReportStatus(route) {
+    const reportDays = parseWatchReportDays(route.watch_report);
+    if (reportDays === 0) {
+        return {
+            modeText: '无需观看保号',
+            countdownText: '无需检测',
+            nextCheckText: '-',
+            colorClass: 'watch-countdown-safe'
+        };
+    }
 
-            const now = new Date();
-            const nextCheck = new Date(lastPlayDate.getTime());
-            nextCheck.setHours(24, 0, 0, 0);
-            nextCheck.setDate(nextCheck.getDate() + reportDays);
-            const diffMs = nextCheck.getTime() - now.getTime();
-            let colorClass = 'watch-countdown-safe';
-            if (diffMs <= 86400000) colorClass = 'watch-countdown-danger';
-            else if (diffMs <= 259200000) colorClass = 'watch-countdown-warning';
+    const lastPlayDate = parseBeijingDateTime(route.last_play);
+    if (!lastPlayDate) {
+        return {
+            modeText: reportDays + ' 天检测',
+            countdownText: '等待首播',
+            nextCheckText: '-',
+            colorClass: 'watch-countdown-warning'
+        };
+    }
 
-                return {
-                    modeText: reportDays + ' 天检测',
-                    countdownText: formatCountdownText(diffMs),
-                    nextCheckText: formatDisplayDateTime(nextCheck),
-                    colorClass: colorClass
-                };
-            }
+    const now = new Date();
+    const nextCheck = new Date(lastPlayDate.getTime());
+    nextCheck.setHours(24, 0, 0, 0);
+    nextCheck.setDate(nextCheck.getDate() + reportDays);
+    const diffMs = nextCheck.getTime() - now.getTime();
+    let colorClass = 'watch-countdown-safe';
+    if (diffMs <= 86400000) colorClass = 'watch-countdown-danger';
+    else if (diffMs <= 259200000) colorClass = 'watch-countdown-warning';
 
-        function renderWatchReportPanel(routes) {
-            const container = document.getElementById('watch-report-grid');
-            if (!container) return;
-            if (!routes || routes.length === 0) {
-                container.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-sec); padding: 20px;">暂无反代节点，无法计算保号检测。</td></tr>';
-                return;
-            }
+    return {
+        modeText: reportDays + ' 天检测',
+        countdownText: formatCountdownText(diffMs),
+        nextCheckText: formatDisplayDateTime(nextCheck),
+        colorClass: colorClass
+    };
+}
 
-            container.innerHTML = routes.map(route => {
+function renderWatchReportPanel(routes) {
+    const container = document.getElementById('watch-report-grid');
+    if (!container) return;
+    if (!routes || routes.length === 0) {
+        container.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-sec); padding: 20px;">暂无反代节点，无法计算保号检测。</td></tr>';
+        return;
+    }
+
+    container.innerHTML = routes.map(route => {
                 const remarkName = route.remark || '未命名媒体库';
                 const reportDays = parseWatchReportDays(route.watch_report);
-                const reportText = reportDays === 0 ? '无需保号' : (reportDays + ' 天');
+                const reportText = reportDays === 0 ? '无' : (reportDays + ' 天');
                 const status = calcWatchReportStatus(route);
                 const iconHtml = route.icon ? '<img src="' + route.icon + '" class="watch-table-icon">' : '<span class="watch-table-icon">🎬</span>';
                 const lastPlayText = formatDisplayDateTime(route.last_play);
                 const mobileDetailId = 'watch-detail-' + route.prefix;
                 const mobileInputId = 'watch-inline-mobile-' + route.prefix;
+                const desktopInputId = 'watch-inline-' + route.prefix;
                 return \`
                     <tr class="watch-report-row">
                         <td data-label="图标">\${iconHtml}</td>
-                        <td data-label="名字">
+                        <td data-label="服名">
                             <div class="watch-table-name">\${remarkName}</div>
                             <div class="watch-table-sub">/\${route.prefix}</div>
                         </td>
-                        <td data-label="保号要求">
-                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportText}</span>
-                        </td>
-                        <td data-label="保号天数">
-                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                                <input type="number" min="0" step="1" value="\${reportDays}" class="watch-edit-input" id="watch-inline-\${route.prefix}">
-                                <button type="button" class="watch-save-btn" onclick="saveWatchReportDays('\${route.prefix}', this)">保存</button>
-                            </div>
-                        </td>
                         <td data-label="上次观看">\${lastPlayText}</td>
-                        <td data-label="预计检测">\${status.nextCheckText}</td>
-                        <td data-label="保号倒计时">
+                        <td data-label="下次检测">\${status.nextCheckText}</td>
+                        <td data-label="保号要求">
+                            \${renderWatchRequirementCell(route.prefix, reportDays, reportText, desktopInputId, false)}
+                        </td>
+                        <td data-label="倒计时">
                             <div class="watch-mobile-summary" onclick="toggleWatchDetail('\${mobileDetailId}', this.querySelector('.watch-mobile-toggle'))">
                                 <div class="watch-mobile-top">
                                     <div class="watch-mobile-inline">
@@ -973,7 +981,7 @@ const HTML_UI = `
                                     </div>
                                     <div class="watch-mobile-status-row">
                                         <div class="watch-mobile-meta">
-                                            <span class="badge" style="background: rgba(0,113,227,0.1); color: var(--primary); border: 1px solid rgba(0,113,227,0.15);">\${reportText}</span>
+                                            \${renderWatchRequirementCell(route.prefix, reportDays, reportText, mobileInputId, true)}
                                         </div>
                                         <div class="watch-mobile-meta">
                                             <span class="watch-countdown \${status.colorClass}">\${status.countdownText}</span>
@@ -986,12 +994,8 @@ const HTML_UI = `
                                         <span>\${lastPlayText}</span>
                                     </div>
                                     <div class="watch-mobile-detail-row">
-                                        <span class="watch-mobile-detail-label">预计检测</span>
+                                        <span class="watch-mobile-detail-label">下次检测</span>
                                         <span>\${status.nextCheckText}</span>
-                                    </div>
-                                    <div class="watch-mobile-edit">
-                                        <input type="number" min="0" step="1" value="\${reportDays}" class="watch-edit-input" id="\${mobileInputId}">
-                                        <button type="button" class="watch-save-btn" onclick="saveWatchReportDays('\${route.prefix}', this, '\${mobileInputId}')">保存</button>
                                     </div>
                                 </div>
                             </div>
@@ -1010,15 +1014,66 @@ const HTML_UI = `
             if (btn) btn.textContent = isOpen ? '收起详情' : '展开详情';
         }
 
-        async function saveWatchReportDays(prefix, btn, inputId) {
-            const input = document.getElementById(inputId || ('watch-inline-' + prefix));
+        function startWatchReportEdit(prefix, inputId, mobile) {
+            const display = document.getElementById('watch-display-' + inputId);
+            const editor = document.getElementById('watch-editor-' + inputId);
+            const input = document.getElementById(inputId);
+            if (!display || !editor || !input) return;
+            display.style.display = 'none';
+            editor.style.display = mobile ? 'flex' : 'inline-flex';
+            setTimeout(() => {
+                input.focus();
+                input.select();
+            }, 0);
+        }
+
+        function cancelWatchReportEdit(inputId) {
+            const display = document.getElementById('watch-display-' + inputId);
+            const editor = document.getElementById('watch-editor-' + inputId);
+            if (display) display.style.display = '';
+            if (editor) editor.style.display = 'none';
+        }
+
+        function handleWatchReportKeydown(event, prefix, inputId, mobile) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.target.blur();
+                return;
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                cancelWatchReportEdit(inputId);
+            }
+        }
+
+        async function handleWatchReportBlur(prefix, inputId, mobile) {
+            const input = document.getElementById(inputId);
             const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
-            if (!input || !route) return showToast('❌ 节点数据不存在，无法保存');
+            if (!input || !route) return cancelWatchReportEdit(inputId);
 
             const watch_report = parseWatchReportDays(input.value);
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = '保存中...';
+            const currentReport = parseWatchReportDays(route.watch_report);
+            if (watch_report === currentReport) {
+                cancelWatchReportEdit(inputId);
+                return;
+            }
+
+            await saveWatchReportDays(prefix, input, inputId);
+        }
+
+        async function saveWatchReportDays(prefix, triggerEl, inputId) {
+            const input = document.getElementById(inputId || ('watch-inline-' + prefix));
+            const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
+            const targetInputId = inputId || ('watch-inline-' + prefix);
+            if (!input || !route) {
+                cancelWatchReportEdit(targetInputId);
+                return showToast('❌ 节点数据不存在，无法保存');
+            }
+
+            const watch_report = parseWatchReportDays(input.value);
+            const display = document.getElementById('watch-display-' + targetInputId);
+            if (triggerEl) triggerEl.disabled = true;
+            if (display) display.style.opacity = '0.6';
 
             try {
                 const res = await fetch('/api/routes', {
@@ -1037,13 +1092,12 @@ const HTML_UI = `
                 });
                 const data = await res.json();
                 if (!data.success) throw new Error(data.error || '保存失败');
-                btn.disabled = false;
-                btn.textContent = originalText;
                 showToast('✅ 保号天数已更新');
                 await load();
             } catch (err) {
-                btn.disabled = false;
-                btn.textContent = originalText;
+                if (triggerEl) triggerEl.disabled = false;
+                if (display) display.style.opacity = '1';
+                cancelWatchReportEdit(targetInputId);
                 showToast('❌ 保存失败: ' + err.message);
             }
         }
