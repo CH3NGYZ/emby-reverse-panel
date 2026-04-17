@@ -428,6 +428,10 @@ const HTML_UI = `
                             <input type="checkbox" id="nodeCache" class="ip-checkbox" checked>
                             开启海报及静态资源缓存
                         </label>
+                        <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:500; cursor:pointer;">
+                            <input type="checkbox" id="proxy302" class="ip-checkbox" checked>
+                            开启302播放链接反代
+                        </label>
                         <button type="submit" id="submitBtn" class="btn-submit" style="flex: 1; padding: 14px 20px;">保存部署</button>
                     </div>
 
@@ -924,8 +928,9 @@ function calcWatchReportStatus(route) {
 
     const now = new Date();
     const nextCheck = new Date(lastPlayDate.getTime());
+    // 次日凌晨记为第 1 次检测，因此这里只追加剩余的 reportDays - 1 天。
     nextCheck.setHours(24, 0, 0, 0);
-    nextCheck.setDate(nextCheck.getDate() + reportDays);
+    nextCheck.setDate(nextCheck.getDate() + Math.max(reportDays - 1, 0));
     const diffMs = nextCheck.getTime() - now.getTime();
     let colorClass = 'watch-countdown-safe';
     if (diffMs <= 86400000) colorClass = 'watch-countdown-danger';
@@ -1312,13 +1317,17 @@ function renderWatchReportPanel(routes) {
                                 <span style="color:\${r.cache_img !== 'off' ? '#34c759' : '#ff9500'}; font-weight:600;">\${r.cache_img !== 'off' ? '✅ 已开启' : '❌ 已关闭'}</span>
                             </div>
                             <div class="info-row">
+                                <span class="info-label">302反代:</span>
+                                <span style="color:\${r.proxy_302 !== 'off' ? '#34c759' : '#ff9500'}; font-weight:600;">\${r.proxy_302 !== 'off' ? '✅ 已开启' : '❌ 已关闭'}</span>
+                            </div>
+                            <div class="info-row">
                                 <span class="info-label">最后活跃:</span>
                                 <span style="color:var(--text-sec);">\${lastPlay}</span>
                             </div>
                         </div>
 
                         <div class="card-footer">
-                            <button class="btn-edit" onclick="editNode('\${r.prefix}', '\${r.target}', '\${r.mode}', '\${r.remark || ''}', '\${r.icon || ''}', '\${r.cache_img}')">编辑配置</button>
+                            <button class="btn-edit" onclick="editNode('\${r.prefix}', '\${r.target}', '\${r.mode}', '\${r.remark || ''}', '\${r.icon || ''}', '\${r.cache_img}', '\${r.proxy_302 || 'on'}')">编辑配置</button>
                             <button class="btn-del" onclick="del('\${r.prefix}')">删除</button>
                         </div>
                     </div>\`;
@@ -1353,7 +1362,7 @@ function renderWatchReportPanel(routes) {
             }
         }
 
-        function editNode(prefix, targetStr, mode, remark, icon, cacheImg) {
+        function editNode(prefix, targetStr, mode, remark, icon, cacheImg, proxy302) {
             const routeData = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
             document.getElementById('oldPrefix').value = prefix;
             document.getElementById('remark').value = remark;
@@ -1361,6 +1370,7 @@ function renderWatchReportPanel(routes) {
             document.getElementById('mode').value = mode || 'off';
             document.getElementById('watchReport').value = routeData ? parseWatchReportDays(routeData.watch_report) : 0;
             document.getElementById('nodeCache').checked = (cacheImg !== 'off');
+            document.getElementById('proxy302').checked = (proxy302 !== 'off');
             
             if (icon) {
                 const foundItem = globalIcons.find(i => i.url === icon);
@@ -1402,6 +1412,7 @@ function renderWatchReportPanel(routes) {
             const icon = document.getElementById('iconUrl').value;
             const watch_report = parseWatchReportDays(document.getElementById('watchReport').value);
             const cache_img = document.getElementById('nodeCache').checked ? 'on' : 'off';
+            const proxy_302 = document.getElementById('proxy302').checked ? 'on' : 'off';
 
             const inputs = document.querySelectorAll('.target-input');
             let targetsArray = [];
@@ -1416,7 +1427,7 @@ function renderWatchReportPanel(routes) {
             try {
                 const res = await fetch('/api/routes', { 
                     method: 'POST', 
-                    body: JSON.stringify({oldPrefix, prefix, target, mode, remark, icon, watch_report, cache_img})
+                    body: JSON.stringify({oldPrefix, prefix, target, mode, remark, icon, watch_report, cache_img, proxy_302})
                 });
                 const data = await res.json();
                 if(!data.success) throw new Error(data.error || '部署失败');
@@ -1426,6 +1437,7 @@ function renderWatchReportPanel(routes) {
                 selectIcon('', '默认 🎬');
                 document.getElementById('watchReport').value = '';
                 document.getElementById('nodeCache').checked = true;
+                document.getElementById('proxy302').checked = true;
                 document.getElementById('submitBtn').textContent = '保存部署'; 
                 resetTargetInputs(); 
                 
@@ -2951,8 +2963,8 @@ export default {
                 const routes = await request.json();
                 for (const r of routes) {
                     if (r.prefix && r.target) {
-                        await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                            .bind(r.prefix, r.target, r.mode || 'off', r.remark || '', r.last_play || '', r.icon || '', parseInt(r.watch_report, 10) || 0, r.cache_img || 'on', r.sort_order || 0).run();
+                        await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, proxy_302, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                            .bind(r.prefix, r.target, r.mode || 'off', r.remark || '', r.last_play || '', r.icon || '', parseInt(r.watch_report, 10) || 0, r.cache_img || 'on', r.proxy_302 || 'on', r.sort_order || 0).run();
                     }
                 }
                 return Response.json({
@@ -3081,6 +3093,9 @@ export default {
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`);
             } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE routes ADD COLUMN proxy_302 TEXT DEFAULT 'on'`);
+            } catch (e) {}
 
             // 数据防爆清理策略：自动清理过去 7 天的精细日志
             try {
@@ -3123,8 +3138,8 @@ export default {
                     }
                 }
 
-                await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                    .bind(data.prefix, data.target, data.mode || 'off', data.remark || '', data.last_play || currentLastPlay, data.icon || '', parseInt(data.watch_report, 10) || 0, data.cache_img || 'on', currentSortOrder).run();
+                await env.DB.prepare('INSERT OR REPLACE INTO routes (prefix, target, mode, remark, last_play, icon, watch_report, cache_img, proxy_302, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+                    .bind(data.prefix, data.target, data.mode || 'off', data.remark || '', data.last_play || currentLastPlay, data.icon || '', parseInt(data.watch_report, 10) || 0, data.cache_img || 'on', data.proxy_302 || 'on', currentSortOrder).run();
                 return Response.json({
                     success: true
                 });
@@ -3148,6 +3163,7 @@ export default {
         let targetUrls = [];
         let currentMode = 'off';
         let enableCache = true;
+        let enableProxy302 = true;
         let remainingPath = '';
         const decodedPath = decodeURIComponent(url.pathname);
         let matchedPrefix = null;
@@ -3167,7 +3183,7 @@ export default {
                 if (!env.DB) return new Response(`404: Node not found (DB not bound)`, {
                     status: 404
                 });
-                const stmt = env.DB.prepare(`SELECT target, mode, cache_img FROM routes WHERE prefix = ?`);
+                const stmt = env.DB.prepare(`SELECT target, mode, cache_img, proxy_302 FROM routes WHERE prefix = ?`);
                 const route = await stmt.bind(prefix).first();
                 if (!route) return new Response(`404: Node not found`, {
                     status: 404
@@ -3175,6 +3191,7 @@ export default {
 
                 currentMode = route.mode || 'off';
                 enableCache = (route.cache_img !== 'off');
+                enableProxy302 = (route.proxy_302 !== 'off');
                 matchedPrefix = prefix;
                 remainingPath = '/' + pathParts.slice(2).join('/');
                 targetUrls = route.target.split(',').map(s => s.trim()).filter(Boolean);
@@ -3315,7 +3332,7 @@ export default {
         // ==========================================
         // 🚀 修复版 302 拦截：恢复 URL 编码
         // ==========================================
-        if ([301, 302, 303, 307, 308].includes(finalResponse.status)) {
+        if (enableProxy302 && [301, 302, 303, 307, 308].includes(finalResponse.status)) {
             const location = responseHeaders.get('Location');
             if (location && /^https?:\/\//i.test(location)) {
                 // 🎯 补回 encodeURIComponent，防止播放器解析重定向头时发疯
