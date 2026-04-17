@@ -209,6 +209,8 @@ const LOGIN_UI = `
         <button onclick="login()">验 证 登 录</button>
     </div>
     <script>
+        // 作用：显示顶部浮动提示。
+        // 目的：统一反馈前端操作结果，避免频繁使用阻塞式弹窗。
         function showToast(msg) {
             const t = document.getElementById('toast');
             t.textContent = msg; t.classList.add('show');
@@ -830,6 +832,8 @@ const HTML_UI = `
             setTimeout(() => t.classList.remove('show'), 3000);
         }
 
+        // 作用：切换底部导航对应的面板。
+        // 目的：在单页结构里控制反代、DNS、系统设置三个区域的显示状态。
         function switchTab(tabName, triggerEl) {
             document.querySelectorAll('.tab-panel').forEach(panel => {
                 panel.classList.toggle('active', panel.id === 'tab-' + tabName);
@@ -839,6 +843,8 @@ const HTML_UI = `
             });
         }
 
+        // 作用：请求后端清理 Cloudflare 全站缓存。
+        // 目的：在海报、静态资源更新后强制用户侧尽快拿到最新内容。
         async function purgeCache() {
             if(!confirm('确定要清理 Cloudflare 节点的全站海报和静态缓存吗？\\n\\n清理后可能导致短时间的加载缓慢。')) return;
             const btn = document.getElementById('btnPurge');
@@ -852,6 +858,8 @@ const HTML_UI = `
             } catch(e) { showToast('❌ 网络请求错误'); } finally { btn.textContent = originalText; btn.disabled = false; }
         }
 
+        // 作用：按搜索关键字筛选反代节点卡片。
+        // 目的：节点较多时快速定位指定备注或前缀。
         function filterNodesList() {
             const filterText = document.getElementById('searchNode').value.toLowerCase();
             const cards = document.querySelectorAll('.emby-card');
@@ -861,11 +869,15 @@ const HTML_UI = `
             });
         }
 
+        // 作用：把保号天数字段转换成合法正整数。
+        // 目的：统一处理空值、非法值和非正数，避免倒计时计算异常。
         function parseWatchReportDays(value) {
             const days = parseInt(value, 10);
             return Number.isFinite(days) && days > 0 ? days : 0;
         }
 
+        // 作用：把北京时间字符串解析成 Date 对象。
+        // 目的：确保保号面板与统计时间统一按东八区解释。
         function parseBeijingDateTime(dateTimeStr) {
             if (!dateTimeStr) return null;
             const normalized = dateTimeStr.replace(' ', 'T');
@@ -873,6 +885,8 @@ const HTML_UI = `
             return Number.isNaN(parsed.getTime()) ? null : parsed;
         }
 
+        // 作用：把时间对象或时间字符串格式化成界面展示文本。
+        // 目的：统一表格和详情里的时间展示格式，减少重复拼接逻辑。
         function formatDisplayDateTime(dateTimeInput) {
             const parsed = dateTimeInput instanceof Date ? dateTimeInput : parseBeijingDateTime(dateTimeInput);
             if (!parsed) return '-';
@@ -884,6 +898,8 @@ const HTML_UI = `
             return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
         }
 
+        // 作用：把毫秒级倒计时转换成“X天 Y小时”。
+        // 目的：让保号剩余时间在桌面和移动端都能直接读懂。
         function formatCountdownText(diffMs) {
             if (diffMs <= 0) return '0天 0小时';
             const totalHours = Math.ceil(diffMs / 3600000);
@@ -892,6 +908,8 @@ const HTML_UI = `
             return days + '天 ' + hours + '小时';
         }
 
+        // 作用：渲染保号天数的展示态与编辑态单元格。
+        // 目的：复用桌面端与移动端的保号设置 UI，减少重复模板。
         function renderWatchRequirementCell(prefix, reportDays, reportText, inputId, mobile) {
             const wrapperClass = mobile ? 'watch-mobile-edit' : 'watch-inline-editor';
             const triggerClass = mobile ? 'watch-edit-trigger watch-mobile-edit' : 'watch-edit-trigger';
@@ -904,6 +922,8 @@ const HTML_UI = `
                 </div>\`;
         }
 
+// 作用：根据上次观看时间和保号天数计算检测时间与倒计时。
+// 目的：把保号规则收敛到单一函数，供展示、排序和详情复用。
 function calcWatchReportStatus(route) {
     const reportDays = parseWatchReportDays(route.watch_report);
     if (reportDays === 0) {
@@ -953,6 +973,8 @@ const watchSortIcons = {
     desc: ' ↓'
 };
 
+// 作用：为保号表格的不同排序字段生成可比较的值。
+// 目的：把备注、时间、倒计时等混合类型统一成可排序的数据。
 function getWatchReportSortValue(route, sortKey) {
     if (sortKey === 'remark') {
         return (route.remark || route.prefix || '').toLowerCase();
@@ -984,6 +1006,8 @@ function getWatchReportSortValue(route, sortKey) {
     return '';
 }
 
+// 作用：按当前排序状态生成保号节点列表的排序结果。
+// 目的：保证表格排序只影响显示顺序，不改动原始节点数据。
 function getSortedWatchRoutes(routes) {
     if (!Array.isArray(routes)) return [];
     if (!watchReportSortState.key) return routes.slice();
@@ -999,6 +1023,8 @@ function getSortedWatchRoutes(routes) {
     });
 }
 
+// 作用：更新保号表头上的排序箭头。
+// 目的：让用户直观看到当前按哪一列、什么方向排序。
 function updateWatchReportSortHeaders() {
     const sortLabels = {
         remark: '服名',
@@ -1015,6 +1041,8 @@ function updateWatchReportSortHeaders() {
     });
 }
 
+// 作用：切换保号表格的排序列和升降序状态。
+// 目的：支持点击表头后即时重排当前列表。
 function toggleWatchReportSort(sortKey) {
     if (watchReportSortState.key === sortKey) {
         watchReportSortState.direction = watchReportSortState.direction === 'asc' ? 'desc' : 'asc';
@@ -1028,6 +1056,8 @@ function toggleWatchReportSort(sortKey) {
 }
 
 
+// 作用：渲染保号检测面板整张表格。
+// 目的：集中输出桌面和移动端共用的保号检测视图。
 function renderWatchReportPanel(routes) {
     const container = document.getElementById('watch-report-grid');
     if (!container) return;
@@ -1099,6 +1129,8 @@ function renderWatchReportPanel(routes) {
             }).join('');
         }
 
+        // 作用：展开或收起移动端保号详情块。
+        // 目的：在小屏下保留关键信息，同时避免卡片过长。
         function toggleWatchDetail(detailId, btn) {
             const detail = document.getElementById(detailId);
             if (!detail) return;
@@ -1106,6 +1138,8 @@ function renderWatchReportPanel(routes) {
             if (btn) btn.textContent = isOpen ? '收起详情' : '展开详情';
         }
 
+        // 作用：切换保号天数到编辑态并自动聚焦输入框。
+        // 目的：让桌面和移动端都能快速原地修改保号要求。
         function startWatchReportEdit(prefix, inputId, mobile) {
             const display = document.getElementById('watch-display-' + inputId);
             const editor = document.getElementById('watch-editor-' + inputId);
@@ -1119,6 +1153,8 @@ function renderWatchReportPanel(routes) {
             }, 0);
         }
 
+        // 作用：结束保号天数编辑并恢复展示态。
+        // 目的：在未保存或取消时回收内联编辑控件。
         function cancelWatchReportEdit(inputId) {
             const display = document.getElementById('watch-display-' + inputId);
             const editor = document.getElementById('watch-editor-' + inputId);
@@ -1126,6 +1162,8 @@ function renderWatchReportPanel(routes) {
             if (editor) editor.style.display = 'none';
         }
 
+        // 作用：处理保号编辑输入框的回车和 ESC 快捷键。
+        // 目的：支持键盘快速提交或取消，提升录入效率。
         function handleWatchReportKeydown(event, prefix, inputId, mobile) {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -1138,6 +1176,8 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：在输入框失焦时决定是否保存新的保号天数。
+        // 目的：让内联编辑在无额外按钮的情况下自然完成提交。
         async function handleWatchReportBlur(prefix, inputId, mobile) {
             const input = document.getElementById(inputId);
             const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
@@ -1153,6 +1193,8 @@ function renderWatchReportPanel(routes) {
             await saveWatchReportDays(prefix, input, inputId);
         }
 
+        // 作用：把修改后的保号天数提交到后端并刷新列表。
+        // 目的：保持数据库、全局数据和界面状态同步。
         async function saveWatchReportDays(prefix, triggerEl, inputId) {
             const input = document.getElementById(inputId || ('watch-inline-' + prefix));
             const route = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
@@ -1194,6 +1236,8 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：按节点单独拉取今日带宽并回填卡片。
+        // 目的：避免主列表接口过重，同时让流量信息渐进式展示。
         async function loadSingleRouteBandwidth(prefix) {
             try {
                 const res = await fetch('/api/routes/bandwidth?prefix=' + encodeURIComponent(prefix));
@@ -1211,6 +1255,8 @@ function renderWatchReportPanel(routes) {
             } catch (e) {}
         }
 
+        // 作用：批量调度多个节点的带宽补写请求。
+        // 目的：错峰请求后端，降低同时查询所有节点时的压力。
         function loadRouteBandwidth(prefixes) {
             if (!Array.isArray(prefixes) || prefixes.length === 0) return;
             prefixes.forEach((prefix, index) => {
@@ -1218,6 +1264,8 @@ function renderWatchReportPanel(routes) {
             });
         }
 
+        // 作用：动态维护源站线路输入框的增减和占位文案。
+        // 目的：支持无限备用线路，同时保持表单始终有一个空输入框可用。
         function handleTargetInputs() {
             const container = document.getElementById('targetInputs');
             const inputs = container.querySelectorAll('.target-input');
@@ -1239,6 +1287,8 @@ function renderWatchReportPanel(routes) {
             });
         }
 
+        // 作用：重置线路输入区域到初始状态。
+        // 目的：在保存成功或取消编辑后快速恢复干净表单。
         function resetTargetInputs() {
             const container = document.getElementById('targetInputs');
             container.innerHTML = \`
@@ -1247,6 +1297,8 @@ function renderWatchReportPanel(routes) {
             \`;
         }
 
+        // 作用：切换链接或源站列表的明文显示状态。
+        // 目的：默认隐藏敏感地址，按需查看时再展开。
         function toggleVis(id, isArray = false) {
             const el = document.getElementById(id);
             if (el.classList.contains('secret-text')) {
@@ -1265,8 +1317,12 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：复制文本到剪贴板。
+        // 目的：统一处理链接、IP、域名等内容的复制反馈。
         function copyTxt(txt) { navigator.clipboard.writeText(txt).then(() => showToast('🚀 复制成功！')); }
 
+        // 作用：对单个源站线路执行测速并更新节点卡片。
+        // 目的：帮助用户快速感知当前源站可用性与延迟水平。
         async function pingTarget(idx, targetUrl) {
             const pingEl = document.getElementById('ping-' + idx);
             pingEl.textContent = '测速中...'; pingEl.style.color = 'var(--text-sec)';
@@ -1280,12 +1336,16 @@ function renderWatchReportPanel(routes) {
             } catch(e) { pingEl.textContent = '测速异常'; pingEl.style.color = '#ff3b30'; }
         }
 
+        // 作用：批量触发所有节点的测速。
+        // 目的：在节点更新后快速刷新整页延迟状态。
         function pingAllNodes() {
             if (proxyNodesForPing.length === 0) return showToast('⚠️ 没有可供测速的反代节点');
             showToast('⚡ 正在对所有节点发起测速...');
             proxyNodesForPing.forEach((node, offset) => { setTimeout(() => pingTarget(node.idx, node.url), offset * 200); });
         }
 
+        // 作用：导出当前全部反代节点配置为本地 JSON 文件。
+        // 目的：方便备份、迁移和批量恢复配置。
         async function exportConfig() {
             try {
                 const res = await fetch('/api/routes'); const data = await res.json();
@@ -1296,6 +1356,8 @@ function renderWatchReportPanel(routes) {
             } catch (e) { showToast('❌ 导出失败'); }
         }
 
+        // 作用：导入本地 JSON 配置文件并写回节点列表。
+        // 目的：支持一键恢复或批量迁移反代配置。
         function importConfig() {
             const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
             input.onchange = async (e) => {
@@ -1313,6 +1375,8 @@ function renderWatchReportPanel(routes) {
             input.click();
         }
 
+        // 作用：加载节点列表并刷新保号面板、卡片列表和带宽信息。
+        // 目的：作为前端主刷新入口，统一同步页面核心数据。
         async function load() {
             try {
                 const res = await fetch('/api/routes');
@@ -1453,6 +1517,8 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：把指定节点数据回填到编辑表单。
+        // 目的：支持对已有节点原地修改，而不是删除后重建。
         function editNode(prefix, targetStr, mode, remark, icon, cacheImg, proxy302) {
             const routeData = Array.isArray(window.globalRoutesData) ? window.globalRoutesData.find(item => item.prefix === prefix) : null;
             document.getElementById('oldPrefix').value = prefix;
@@ -1539,6 +1605,8 @@ function renderWatchReportPanel(routes) {
             }
         };
 
+        // 作用：删除指定反代节点。
+        // 目的：在确认后移除无用节点并刷新当前列表。
         async function del(prefix) {
             if(confirm('确定删除节点 /' + prefix + ' ?')) {
                 await fetch('/api/routes?prefix=' + prefix, { method: 'DELETE' });
@@ -1547,16 +1615,22 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：全选或取消全选测速表里的 DNS 节点。
+        // 目的：方便批量更新 DNS 记录时快速勾选目标节点。
         function toggleSelectAllDns() {
             const isChecked = document.getElementById('selectAll').checked;
             document.querySelectorAll('.row-checkbox').forEach(cb => {
                 if(!cb.disabled) cb.checked = isChecked;
             });
         }
+        // 作用：收集当前测速表中已勾选的节点列表。
+        // 目的：为批量 DNS 更新提供统一的数据入口。
         function getSelectedIps() {
             const checkboxes = document.querySelectorAll('.row-checkbox:checked');
             return Array.from(checkboxes).map(cb => cb.value);
         }
+        // 作用：把测速结果复制到 ITDog 批量 TCP Ping 页面。
+        // 目的：借助第三方工具进一步验证候选节点质量。
         function batchTcpPing() {
             const rows = document.querySelectorAll('#testTableBody .test-row');
             let ips = [];
@@ -1574,6 +1648,8 @@ function renderWatchReportPanel(routes) {
                 setTimeout(() => { window.open('https://www.itdog.cn/batch_tcping/', '_blank'); }, 1500);
             });
         }
+        // 作用：从文本框提取优选域名并直接提交为 CNAME。
+        // 目的：让使用域名优选方案时少走手动整理流程。
         function directSubmitCname() {
             const input = document.getElementById('customIps').value.trim();
             if (!input) return showToast('⚠️ 请先在文本框内粘贴您的优选域名');
@@ -1585,6 +1661,8 @@ function renderWatchReportPanel(routes) {
             const btn = document.getElementById('btnDirectCname');
             sendDnsRequest(realDomains, btn);
         }
+        // 作用：从用户输入中提取 IP 或域名并执行本地测速。
+        // 目的：支持手动验证自定义候选节点质量。
         async function testCustomIPs() {
             const input = document.getElementById('customIps').value;
             if (!input.trim()) return showToast('⚠️ 请先在输入框粘贴 IP 或优选域名');
@@ -1626,6 +1704,8 @@ function renderWatchReportPanel(routes) {
             btn.disabled = false; btn.textContent = '🧪 测试粘贴的节点';
             showToast('🎉 自定义节点测速完成！');
         }
+        // 作用：从自定义 API 拉取节点列表并批量测速。
+        // 目的：兼容外部优选源，减少手工复制粘贴工作量。
         async function fetchCustomApiAndTest() {
             const apiUrl = document.getElementById('customApiUrl').value.trim();
             if (!apiUrl) return showToast('⚠️ 请先填入自定义 API 链接');
@@ -1664,6 +1744,8 @@ function renderWatchReportPanel(routes) {
             } catch (err) { showToast('❌ 拉取失败'); } 
             finally { btn.disabled = false; btn.textContent = '🌐 拉取 API 并测速'; }
         }
+        // 作用：从内置远程源抓取候选节点并批量测速。
+        // 目的：快速生成当前线路可用的 DNS 候选池。
         async function fetchRemoteAndTest() {
             const btn = document.getElementById('btnFetchRemote');
             const tbody = document.getElementById('testTableBody');
@@ -1702,17 +1784,23 @@ function renderWatchReportPanel(routes) {
             } catch (err) { showToast('❌ 拉取或测速失败'); } 
             finally { btn.disabled = false; btn.textContent = '🌍 提取预设源并测速'; }
         }
+        // 作用：清空 DNS 测速表内容。
+        // 目的：在开始新一轮测试前重置当前结果列表。
         function clearTest() {
             document.getElementById('testTableBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-sec);">暂无数据，请拉取节点或输入自定义 IP/域名 测试</td></tr>';
             document.getElementById('statusText').textContent = '列表已清空。';
             document.getElementById('selectAll').checked = false;
         }
+        // 作用：把超时节点标记为不可用。
+        // 目的：统一处理测速失败场景，并阻止无效节点参与 DNS 更新。
         function markTimeout(latTd, spdTd, tr) {
             latTd.textContent = '超时抛弃'; latTd.setAttribute('data-ms', 9999); latTd.style.color = '#ff3b30';
             spdTd.textContent = '❌ 超时 (>2000ms)'; spdTd.style.color = '#ff3b30';
             const cb = tr.querySelector('.row-checkbox');
             if(cb) { cb.disabled = true; cb.title = '不可用的节点无法被勾选'; }
         }
+        // 作用：对单个候选节点执行本地延迟探测。
+        // 目的：为 DNS 候选池生成可排序、可筛选的实时质量数据。
         async function doLocalPing(ip, tr, sourceLabel) {
             const latTd = tr.querySelector('.latency');
             const spdTd = tr.querySelector('.speed');
@@ -1741,12 +1829,16 @@ function renderWatchReportPanel(routes) {
             try { await fetch(\`https://\${ip}/cdn-cgi/trace\`, { mode: 'no-cors', signal: controller.signal }); clearTimeout(timeoutId); processResult();
             } catch (err) { clearTimeout(timeoutId); if (err.name === 'AbortError') markTimeout(latTd, spdTd, tr); else processResult(); }
         }
+        // 作用：按测速结果更新表格行的状态展示。
+        // 目的：用统一阈值把延迟映射成可读的质量标签。
         function updateRowState(latTd, spdTd, latency) {
             latTd.textContent = latency + ' ms'; latTd.setAttribute('data-ms', latency);
             if (latency < 300) { latTd.style.color = '#34c759'; spdTd.textContent = '🚀 极佳'; spdTd.style.color = '#34c759'; } 
             else if (latency <= 500) { latTd.style.color = 'var(--primary)'; spdTd.textContent = '✅ 正常'; spdTd.style.color = 'var(--primary)'; } 
             else { latTd.style.color = '#ff9500'; spdTd.textContent = '⚠️ 较高'; spdTd.style.color = '#ff9500'; }
         }
+        // 作用：按延迟从低到高重排测速表。
+        // 目的：让最快节点始终排在前面，方便直接取用。
         function sortTableByLatency(tbody) {
             const rows = Array.from(tbody.querySelectorAll('.test-row'));
             rows.sort((a, b) => {
@@ -1756,6 +1848,8 @@ function renderWatchReportPanel(routes) {
             });
             rows.forEach(row => tbody.appendChild(row));
         }
+        // 作用：向后端提交新的 DNS 解析列表。
+        // 目的：统一承载单节点、勾选节点和 Top3 节点三种更新入口。
         async function sendDnsRequest(ips, btnElement) {
             const originalText = btnElement.textContent;
             btnElement.textContent = '🔄 更新 DNS 中...'; btnElement.disabled = true;
@@ -1767,10 +1861,14 @@ function renderWatchReportPanel(routes) {
             } catch(e) { showToast('❌ 网络异常，请重试'); btnElement.textContent = originalText; } 
             finally { setTimeout(() => { if(btnElement.textContent === '✅ 更新成功') btnElement.textContent = originalText; btnElement.disabled = false; }, 3000); }
         }
+        // 作用：把单个节点提交为唯一 DNS 解析。
+        // 目的：提供最直接的单点切换入口。
         function updateSingleDns(ip, btnElement) {
             if(!confirm(\`确定要将域名解析到：\\n\${ip} \\n警告：这会覆盖域名下的所有解析记录！\`)) return;
             sendDnsRequest([ip], btnElement);
         }
+        // 作用：把勾选的多个节点批量提交到 DNS。
+        // 目的：支持用户按自己的筛选结果自定义解析池。
         function updateSelectedToDns() {
             const btn = document.getElementById('btnSelectedDns');
             const ips = getSelectedIps();
@@ -1778,6 +1876,8 @@ function renderWatchReportPanel(routes) {
             if(!confirm(\`将应用勾选的 \${ips.length} 个节点：\\n\${ips.join('\\n')}\\n确定更新 DNS 记录吗？\`)) return;
             sendDnsRequest(ips, btn);
         }
+        // 作用：取测速结果里最快的前三个节点更新 DNS。
+        // 目的：给用户提供一个默认的高质量解析组合方案。
         function updateTop3ToDns() {
             const btn = document.getElementById('btnTop3Dns');
             const rows = document.querySelectorAll('#testTableBody .test-row');
@@ -1791,6 +1891,8 @@ function renderWatchReportPanel(routes) {
             if(!confirm(\`将为您分发当前最快的 \${topIps.length} 个节点：\\n\${topIps.join('\\n')}\\n确定更新 DNS 记录吗？\`)) return;
             sendDnsRequest(topIps, btn);
         }
+        // 作用：读取当前域名的 DNS 解析状态并展示。
+        // 目的：让用户在测速页直接看到当前生效的解析结果。
         async function loadDNS() {
             try {
                 const res = await fetch('/api/get-dns'); const data = await res.json(); const container = document.getElementById('dnsStatus');
@@ -1802,6 +1904,8 @@ function renderWatchReportPanel(routes) {
             } catch (e) { document.getElementById('dnsStatus').innerHTML = '<span class="badge" style="background:rgba(255,59,48,0.1);color:#ff3b30;">网络异常</span>'; }
         }
         
+        // 作用：清除登录 cookie 并退出管理面板。
+        // 目的：结束当前授权会话，防止他人继续操作面板。
         function logout() {
             document.cookie = "admin_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             window.location.reload();
@@ -1816,6 +1920,8 @@ function renderWatchReportPanel(routes) {
         // ==========================================
         // 🌟 新增：RTT 实时监测引擎 (每隔 3 秒探测一次)
         // ==========================================
+        // 作用：探测浏览器到当前 Worker 的真实往返延迟。
+        // 目的：给用户实时展示访问入口的网络质量变化。
         async function measureRTT() {
             const start = performance.now();
             try {
@@ -1849,6 +1955,8 @@ function renderWatchReportPanel(routes) {
         setInterval(measureRTT, 3000);
 
     // 🚀 新增：前端探针自动检测脚本
+        // 作用：查询访客入口机房和 Worker 实际落地机房。
+        // 目的：帮助用户判断当前是否触发智能调度或跨区回源。
         async function fetchCfTrace() {
             try {
                 const res = await fetch('/api/trace');
@@ -1926,6 +2034,8 @@ function renderWatchReportPanel(routes) {
         };
 
         // 🚀 新增：联动菜单处理逻辑
+        // 作用：联动切换 Worker 放置区域的下拉菜单与自定义输入框。
+        // 目的：根据选择的云厂商显示对应的区域配置入口。
         function handleModeChange() {
             var mode = document.getElementById('cf-mode-select').value;
             var regionSelect = document.getElementById('cf-region-select');
@@ -1950,6 +2060,8 @@ function renderWatchReportPanel(routes) {
         }
 
         // 🚀 新增：调用部署修改接口
+        // 作用：提交 Worker 落地区域修改请求。
+        // 目的：让用户在面板内直接调整 Cloudflare Worker 的放置策略。
         async function updatePlacement() {
             var statusElem = document.getElementById('place-status');
             var modeVal = document.getElementById('cf-mode-select').value;
@@ -2002,12 +2114,16 @@ function renderWatchReportPanel(routes) {
         }, 100); 
 
         // 🚀 全选 / 取消全选逻辑
+        // 作用：全选或取消全选反代节点卡片上的复选框。
+        // 目的：为批量切换节点模式提供快捷入口。
         function toggleSelectAllNodes(checkbox) {
             const checkboxes = document.querySelectorAll('.node-cb');
             checkboxes.forEach(cb => cb.checked = checkbox.checked);
         }
 
         // 🚀 并发批量修改模式逻辑 (终极多线程逐个击破版)
+        // 作用：批量修改已勾选节点的反代模式。
+        // 目的：在大量节点场景下减少逐个编辑的重复操作。
         async function batchUpdateModes() {
             const statusElem = document.getElementById('batch-status');
             const newMode = document.getElementById('batch-mode-select').value;
@@ -2059,6 +2175,8 @@ function renderWatchReportPanel(routes) {
                 statusElem.style.color = "#ff3b30";
             }
         }
+    // 作用：把文本框或文件中的新代码部署到当前 Worker。
+    // 目的：支持在面板中直接覆盖更新 Worker 脚本。
     async function deployWorker() {
             const codeArea = document.getElementById('codeArea');
             const fileInput = document.getElementById('fileInput');
@@ -2107,6 +2225,8 @@ function renderWatchReportPanel(routes) {
         
         let latestCode = ""; 
 
+        // 作用：检查 GitHub 上是否存在更高版本脚本。
+        // 目的：让用户在面板中发现可用更新并触发在线升级。
         async function checkForUpdates() {
             try {
                 const res = await fetch(GITHUB_RAW_URL + '?t=' + new Date().getTime());
@@ -2127,6 +2247,8 @@ function renderWatchReportPanel(routes) {
             }
         }
 
+        // 作用：从 GitHub 拉取最新源码并调用后端部署接口更新 Worker。
+        // 目的：保留环境变量和绑定的前提下完成一键在线升级。
         async function doOnlineUpdate() {
             if (!confirm('🚀 确定要从 GitHub 拉取最新版本并覆盖当前节点吗？\\n\\n（这将会保留你的所有环境变量和数据库绑定）')) return;
             
@@ -2170,6 +2292,8 @@ function renderWatchReportPanel(routes) {
 // ==========================================
 
 // 用于向 Cloudflare 获取对应时间段的总流量 (支持北京时间今日、近7天、近30天)
+// 作用：按指定时间范围查询 Cloudflare 流量统计。
+// 目的：为数据大屏和 Telegram 播报提供今日、7天、30天流量数据。
 async function getCFTraffic(env, type) {
     if (!env.CF_API_TOKEN || !env.CF_ZONE_ID) return "缺少变量";
     try {
@@ -2273,6 +2397,8 @@ async function getCFTraffic(env, type) {
 }
 
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
+// 作用：汇总今日播放、地区和流量数据并发送到 Telegram。
+// 目的：让管理员无需登录面板也能定时收到核心运营数据。
 async function sendTgStats(env, chatId) {
     try {
         const totalQuery = await env.DB.prepare(`SELECT COUNT(*) as count FROM visitor_logs WHERE date(timestamp, '+8 hours') = date('now', '+8 hours')`).first();
@@ -2567,6 +2693,8 @@ export default {
             status: 500
         });
 
+        // 作用：从请求头里的 Cookie 字符串中读取指定键值。
+        // 目的：在 Worker 侧完成面板登录态校验。
         function getCookie(req, name) {
             const cookieString = req.headers.get("Cookie");
             if (!cookieString) return null;
@@ -3260,11 +3388,15 @@ export default {
         let matchedPrefix = null;
         let proxyOrigin = new URL(request.url).origin;
 
+        // 作用：判断路径是否属于图片或其他静态资源。
+        // 目的：让缓存、重定向和 UHD 图片修复走更合适的处理分支。
         function isStaticPath(pathname) {
             return /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(pathname)
                 || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/|\/img\/)/i.test(pathname);
         }
 
+        // 作用：判断当前请求是否带有 token、Cookie 或鉴权头。
+        // 目的：避免把带鉴权态的图片和静态响应错误缓存到 CDN。
         function hasAuthLikeState(headers, targetUrl) {
             const authQueryKeys = ['api_key', 'x-emby-token', 'x-mediabrowser-token', 'access_token', 'token'];
             const hasAuthQuery = Array.from(targetUrl.searchParams.keys()).some(key => authQueryKeys.includes(key.toLowerCase()));
@@ -3276,6 +3408,8 @@ export default {
                 || hasAuthQuery;
         }
 
+        // 作用：从转发请求中移除面板自身的登录 Cookie。
+        // 目的：防止后台管理 cookie 被带到源站，造成鉴权污染。
         function stripPanelCookie(headers) {
             const cookie = headers.get('Cookie');
             if (!cookie) return;
@@ -3284,6 +3418,8 @@ export default {
             else headers.delete('Cookie');
         }
 
+        // 作用：重写源站返回的 Set-Cookie 域属性。
+        // 目的：让源站会话 cookie 能在当前代理域下正常生效。
         function rewriteSetCookieForProxy(headers) {
             const getSetCookie = headers.getSetCookie ? headers.getSetCookie.bind(headers) : null;
             const rawSetCookie = headers.get('Set-Cookie');
@@ -3293,6 +3429,8 @@ export default {
             for (const cookie of cookies) headers.append('Set-Cookie', cookie.replace(/;\s*Domain=[^;]*/ig, ''));
         }
 
+        // 作用：收集所有源站 origin，并补充 http/https 互换版本。
+        // 目的：为绝对 URL 改写和重定向改写提供完整匹配集合。
         function getTargetOrigins(targets) {
             const origins = [];
             for (const target of targets) {
@@ -3307,6 +3445,8 @@ export default {
             return origins;
         }
 
+        // 作用：把字符串中的源站图片或媒体 URL 改写成当前 Worker 代理地址。
+        // 目的：确保 UHD 图片、封面和媒体链接继续经过代理而不是直连源站。
         function rewriteSourceUrlString(value, targetOrigins, proxyOrigin, safePrefix) {
             let rewritten = value;
             const proxyPrefix = proxyOrigin + safePrefix + '/';
@@ -3334,6 +3474,8 @@ export default {
             return rewritten;
         }
 
+        // 作用：递归改写 JSON 结构里的所有源站 URL。
+        // 目的：覆盖嵌套字段、数组字段中的图片与媒体地址，避免遗漏 UHD 资源。
         function rewriteSourceUrlsInJson(value, targetOrigins, proxyOrigin, safePrefix) {
             if (typeof value === 'string') return rewriteSourceUrlString(value, targetOrigins, proxyOrigin, safePrefix);
             if (Array.isArray(value)) {
@@ -3358,17 +3500,23 @@ export default {
             return value;
         }
 
+        // 作用：移除与原始响应体强绑定的长度和校验头。
+        // 目的：在 body 被重写后避免浏览器按旧元数据解析新内容。
         function dropBodyIntegrityHeaders(headers) {
             headers.delete('Content-Length');
             headers.delete('Content-Encoding');
             headers.delete('ETag');
         }
 
+        // 作用：快速判断一个 JSON 文本是否值得进入深度 URL 改写。
+        // 目的：降低 Worker 在普通 JSON 响应上的无效遍历开销。
         function hasJsonRewriteCandidate(text, targetOrigins) {
             return targetOrigins.some(origin => text.includes(origin))
                 || /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
         }
 
+        // 作用：把源站返回的重定向地址改写成代理域可继续访问的地址。
+        // 目的：避免浏览器在 302/301 后直接跳离当前 Worker 或打到错误源站。
         function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix) {
             if (!location) return location;
             if (location.startsWith('//')) {
