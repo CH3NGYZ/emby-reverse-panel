@@ -1,4 +1,4 @@
-// VERSION: 2.0.6
+// VERSION: 2.0.7
 // 🟢 面板核心配置区 (放在最顶端方便修改)
 const CURRENT_VERSION = "2.0.7";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
@@ -3391,8 +3391,8 @@ export default {
         // 作用：判断路径是否属于图片或其他静态资源。
         // 目的：让缓存、重定向和 UHD 图片修复走更合适的处理分支。
         function isStaticPath(pathname) {
-            return /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(pathname)
-                || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/|\/img\/)/i.test(pathname);
+            return /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(pathname) ||
+                /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/|\/img\/)/i.test(pathname);
         }
 
         // 作用：判断当前请求是否带有 token、Cookie 或鉴权头。
@@ -3400,12 +3400,12 @@ export default {
         function hasAuthLikeState(headers, targetUrl) {
             const authQueryKeys = ['api_key', 'x-emby-token', 'x-mediabrowser-token', 'access_token', 'token'];
             const hasAuthQuery = Array.from(targetUrl.searchParams.keys()).some(key => authQueryKeys.includes(key.toLowerCase()));
-            return headers.has('Authorization')
-                || headers.has('X-Emby-Token')
-                || headers.has('X-MediaBrowser-Token')
-                || headers.has('X-Emby-Authorization')
-                || headers.has('Cookie')
-                || hasAuthQuery;
+            return headers.has('Authorization') ||
+                headers.has('X-Emby-Token') ||
+                headers.has('X-MediaBrowser-Token') ||
+                headers.has('X-Emby-Authorization') ||
+                headers.has('Cookie') ||
+                hasAuthQuery;
         }
 
         // 作用：从转发请求中移除面板自身的登录 Cookie。
@@ -3511,8 +3511,8 @@ export default {
         // 作用：快速判断一个 JSON 文本是否值得进入深度 URL 改写。
         // 目的：降低 Worker 在普通 JSON 响应上的无效遍历开销。
         function hasJsonRewriteCandidate(text, targetOrigins) {
-            return targetOrigins.some(origin => text.includes(origin))
-                || /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
+            return targetOrigins.some(origin => text.includes(origin)) ||
+                /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
         }
 
         // 作用：把源站返回的重定向地址改写成代理域可继续访问的地址。
@@ -3801,15 +3801,15 @@ export default {
         // 静态资源缓存控制保持不变
         const isStaticRes = isStaticPath(url.pathname);
         const contentType = responseHeaders.get("content-type") || "";
-        const canCacheStaticRes = isStaticRes
-            && enableCache
-            && finalResponse.status === 200
-            && (
-                contentType.startsWith("image/")
-                || contentType.includes("javascript")
-                || contentType.includes("css")
-                || contentType.includes("font")
-                || contentType.includes("manifest")
+        const canCacheStaticRes = isStaticRes &&
+            enableCache &&
+            finalResponse.status === 200 &&
+            (
+                contentType.startsWith("image/") ||
+                contentType.includes("javascript") ||
+                contentType.includes("css") ||
+                contentType.includes("font") ||
+                contentType.includes("manifest")
             );
         if (canCacheStaticRes && !responseHeaders.has("Cache-Control")) {
             responseHeaders.set('Cache-Control', 'public, max-age=86400');
