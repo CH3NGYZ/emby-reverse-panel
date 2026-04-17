@@ -1,7 +1,7 @@
 // VERSION: 2.0.6
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.0.6";
-const GITHUB_RAW_URL = "这里填下你的在线更新地址";
+const CURRENT_VERSION = "2.0.7";
+const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
 // 1. 网页界面-单播报版本
@@ -10,7 +10,6 @@ const GITHUB_RAW_URL = "这里填下你的在线更新地址";
 const SVG_EYE = `<svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>`;
 const SVG_COPY = `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
 const SVG_TG = `<svg viewBox="0 0 24 24" style="width:20px;height:20px;margin-right:8px;fill:#0088cc;"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.054 5.56-5.022c.24-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.94z"/></svg>`;
-
 const CSS_COMMON = `
     :root { 
         --primary: #0071e3; 
@@ -336,11 +335,11 @@ const HTML_UI = `
                             <thead>
                                 <tr>
                                     <th style="width: 72px;">图标</th>
-                                    <th>服名</th>
-                                    <th>上次观看</th>
-                                    <th>下次检测</th>
-                                    <th>保号天数</th>
-                                    <th>倒计时</th>
+                                    <th onclick="toggleWatchReportSort('remark')" style="cursor:pointer; user-select:none;">服名</th>
+                                    <th onclick="toggleWatchReportSort('last_play')" style="cursor:pointer; user-select:none;">上次观看</th>
+                                    <th onclick="toggleWatchReportSort('next_check')" style="cursor:pointer; user-select:none;">下次检测</th>
+                                    <th onclick="toggleWatchReportSort('watch_report')" style="cursor:pointer; user-select:none;">保号天数</th>
+                                    <th onclick="toggleWatchReportSort('countdown')" style="cursor:pointer; user-select:none;">倒计时</th>
                                 </tr>
                             </thead>
                             <tbody id="watch-report-grid">
@@ -944,15 +943,103 @@ function calcWatchReportStatus(route) {
     };
 }
 
+let watchReportSortState = {
+    key: '',
+    direction: 'asc'
+};
+
+const watchSortIcons = {
+    asc: ' ↑',
+    desc: ' ↓'
+};
+
+function getWatchReportSortValue(route, sortKey) {
+    if (sortKey === 'remark') {
+        return (route.remark || route.prefix || '').toLowerCase();
+    }
+    if (sortKey === 'last_play') {
+        const lastPlayDate = parseBeijingDateTime(route.last_play);
+        return lastPlayDate ? lastPlayDate.getTime() : Number.NEGATIVE_INFINITY;
+    }
+    if (sortKey === 'next_check') {
+        const reportDays = parseWatchReportDays(route.watch_report);
+        const lastPlayDate = parseBeijingDateTime(route.last_play);
+        if (reportDays === 0) return Number.POSITIVE_INFINITY;
+        if (!lastPlayDate) return Number.NEGATIVE_INFINITY;
+        const nextCheck = new Date(lastPlayDate.getTime());
+        nextCheck.setHours(24, 0, 0, 0);
+        nextCheck.setDate(nextCheck.getDate() + Math.max(reportDays - 1, 0));
+        return nextCheck.getTime();
+    }
+    if (sortKey === 'watch_report') {
+        return parseWatchReportDays(route.watch_report);
+    }
+    if (sortKey === 'countdown') {
+        const status = calcWatchReportStatus(route);
+        if (status.countdownText === '无需检测') return Number.POSITIVE_INFINITY;
+        if (status.countdownText === '等待首播') return Number.NEGATIVE_INFINITY;
+        const nextCheckTime = getWatchReportSortValue(route, 'next_check');
+        return Number.isFinite(nextCheckTime) ? nextCheckTime - Date.now() : nextCheckTime;
+    }
+    return '';
+}
+
+function getSortedWatchRoutes(routes) {
+    if (!Array.isArray(routes)) return [];
+    if (!watchReportSortState.key) return routes.slice();
+    const { key, direction } = watchReportSortState;
+    const multiplier = direction === 'desc' ? -1 : 1;
+    return routes.slice().sort((a, b) => {
+        const aVal = getWatchReportSortValue(a, key);
+        const bVal = getWatchReportSortValue(b, key);
+        if (aVal === bVal) {
+            return (a.prefix || '').localeCompare(b.prefix || '') * multiplier;
+        }
+        return (aVal > bVal ? 1 : -1) * multiplier;
+    });
+}
+
+function updateWatchReportSortHeaders() {
+    const sortLabels = {
+        remark: '服名',
+        last_play: '上次观看',
+        next_check: '下次检测',
+        watch_report: '保号天数',
+        countdown: '倒计时'
+    };
+    Object.entries(sortLabels).forEach(([key, label]) => {
+        const th = document.querySelector("th[onclick=\\"toggleWatchReportSort('" + key + "')\\"]");
+        if (!th) return;
+        const suffix = watchReportSortState.key === key ? (watchSortIcons[watchReportSortState.direction] || '') : '';
+        th.textContent = label + suffix;
+    });
+}
+
+function toggleWatchReportSort(sortKey) {
+    if (watchReportSortState.key === sortKey) {
+        watchReportSortState.direction = watchReportSortState.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+        watchReportSortState.key = sortKey;
+        watchReportSortState.direction = 'asc';
+    }
+    if (Array.isArray(window.globalRoutesData)) {
+        renderWatchReportPanel(window.globalRoutesData);
+    }
+}
+
+
 function renderWatchReportPanel(routes) {
     const container = document.getElementById('watch-report-grid');
     if (!container) return;
+    updateWatchReportSortHeaders();
     if (!routes || routes.length === 0) {
         container.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-sec); padding: 20px;">暂无反代节点，无法计算保号检测。</td></tr>';
         return;
     }
 
-    container.innerHTML = routes.map(route => {
+    const sortedRoutes = getSortedWatchRoutes(routes);
+
+    container.innerHTML = sortedRoutes.map(route => {
                 const remarkName = route.remark || '未命名媒体库';
                 const reportDays = parseWatchReportDays(route.watch_report);
                 const reportText = reportDays === 0 ? '无' : (reportDays + ' 天');
@@ -1235,6 +1322,10 @@ function renderWatchReportPanel(routes) {
 
                 // 🌟 新增：把节点流量数据存进全局内存，供大屏瞬间读取！
                 window.globalRoutesData = data;
+                watchReportSortState = {
+                    key: 'countdown',
+                    direction: 'asc'
+                };
                 renderWatchReportPanel(data);
 
                 const container = document.getElementById('list-grid');
