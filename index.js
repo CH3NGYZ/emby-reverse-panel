@@ -152,7 +152,7 @@ const CSS_COMMON = `
         td[colspan]::before { display: none !important; }
         td::before { content: attr(data-label); font-weight: 600; color: var(--text-sec); flex-shrink: 0; margin-right: auto; text-align: left; }
         .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="服名"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="下次检测"] { display: none; }
-        .watch-report-row td[data-label="保号天数"] { display: none; }
+        .watch-report-row td[data-label="保号天数"], .watch-report-row td[data-label="保号要求"] { display: none; }
         .watch-report-row td[data-label="倒计时"] { display: block; text-align: left; padding: 16px; }
         .watch-report-row td[data-label="倒计时"]::before { display: none; }
         .watch-desktop-summary { display: none; }
