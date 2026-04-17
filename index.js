@@ -3260,6 +3260,139 @@ export default {
         let matchedPrefix = null;
         let proxyOrigin = new URL(request.url).origin;
 
+        function isStaticPath(pathname) {
+            return /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(pathname)
+                || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/|\/img\/)/i.test(pathname);
+        }
+
+        function hasAuthLikeState(headers, targetUrl) {
+            const authQueryKeys = ['api_key', 'x-emby-token', 'x-mediabrowser-token', 'access_token', 'token'];
+            const hasAuthQuery = Array.from(targetUrl.searchParams.keys()).some(key => authQueryKeys.includes(key.toLowerCase()));
+            return headers.has('Authorization')
+                || headers.has('X-Emby-Token')
+                || headers.has('X-MediaBrowser-Token')
+                || headers.has('X-Emby-Authorization')
+                || headers.has('Cookie')
+                || hasAuthQuery;
+        }
+
+        function stripPanelCookie(headers) {
+            const cookie = headers.get('Cookie');
+            if (!cookie) return;
+            const keptCookies = cookie.split(';').map(item => item.trim()).filter(item => item && !item.toLowerCase().startsWith('admin_token='));
+            if (keptCookies.length > 0) headers.set('Cookie', keptCookies.join('; '));
+            else headers.delete('Cookie');
+        }
+
+        function rewriteSetCookieForProxy(headers) {
+            const getSetCookie = headers.getSetCookie ? headers.getSetCookie.bind(headers) : null;
+            const rawSetCookie = headers.get('Set-Cookie');
+            const cookies = getSetCookie ? getSetCookie() : (rawSetCookie ? rawSetCookie.split(/,(?=\s*[^;,]+=)/g) : []);
+            if (cookies.length === 0) return;
+            headers.delete('Set-Cookie');
+            for (const cookie of cookies) headers.append('Set-Cookie', cookie.replace(/;\s*Domain=[^;]*/ig, ''));
+        }
+
+        function getTargetOrigins(targets) {
+            const origins = [];
+            for (const target of targets) {
+                try {
+                    const parsed = new URL(target);
+                    const origin = parsed.origin;
+                    const alternateOrigin = (parsed.protocol === 'https:' ? 'http:' : 'https:') + '//' + parsed.host;
+                    if (!origins.includes(origin)) origins.push(origin);
+                    if (!origins.includes(alternateOrigin)) origins.push(alternateOrigin);
+                } catch (e) {}
+            }
+            return origins;
+        }
+
+        function rewriteSourceUrlString(value, targetOrigins, proxyOrigin, safePrefix) {
+            let rewritten = value;
+            const proxyPrefix = proxyOrigin + safePrefix + '/';
+            for (const origin of targetOrigins) {
+                let result = '';
+                let cursor = 0;
+                let index = rewritten.indexOf(origin);
+                while (index !== -1) {
+                    const alreadyProxied = rewritten.substring(Math.max(0, index - proxyPrefix.length), index) === proxyPrefix;
+                    result += rewritten.substring(cursor, index);
+                    result += alreadyProxied ? origin : proxyPrefix + origin;
+                    cursor = index + origin.length;
+                    index = rewritten.indexOf(origin, cursor);
+                }
+                if (cursor > 0) {
+                    result += rewritten.substring(cursor);
+                    rewritten = result;
+                }
+            }
+            const relativeImagePattern = /(^|["'\s(])((?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)[^"'\s)]*)/ig;
+            rewritten = rewritten.replace(relativeImagePattern, (match, prefix, path) => {
+                if (safePrefix && path.startsWith(safePrefix + '/')) return match;
+                return prefix + proxyOrigin + safePrefix + path;
+            });
+            return rewritten;
+        }
+
+        function rewriteSourceUrlsInJson(value, targetOrigins, proxyOrigin, safePrefix) {
+            if (typeof value === 'string') return rewriteSourceUrlString(value, targetOrigins, proxyOrigin, safePrefix);
+            if (Array.isArray(value)) {
+                let changed = false;
+                const next = value.map(item => {
+                    const rewritten = rewriteSourceUrlsInJson(item, targetOrigins, proxyOrigin, safePrefix);
+                    if (rewritten !== item) changed = true;
+                    return rewritten;
+                });
+                return changed ? next : value;
+            }
+            if (value && typeof value === 'object') {
+                let changed = false;
+                const next = {};
+                for (const key of Object.keys(value)) {
+                    const rewritten = rewriteSourceUrlsInJson(value[key], targetOrigins, proxyOrigin, safePrefix);
+                    if (rewritten !== value[key]) changed = true;
+                    next[key] = rewritten;
+                }
+                return changed ? next : value;
+            }
+            return value;
+        }
+
+        function dropBodyIntegrityHeaders(headers) {
+            headers.delete('Content-Length');
+            headers.delete('Content-Encoding');
+            headers.delete('ETag');
+        }
+
+        function hasJsonRewriteCandidate(text, targetOrigins) {
+            return targetOrigins.some(origin => text.includes(origin))
+                || /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
+        }
+
+        function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix) {
+            if (!location) return location;
+            if (location.startsWith('//')) {
+                try {
+                    const protocol = targetUrl ? targetUrl.protocol : new URL(targetOrigins[0]).protocol;
+                    location = protocol + location;
+                } catch (e) {}
+            }
+            if (location.startsWith('/')) {
+                if (safePrefix && location.startsWith(safePrefix + '/')) return proxyOrigin + location;
+                if (!safePrefix && targetUrl) return `${proxyOrigin}/${encodeURIComponent(new URL(location, targetUrl.origin).href)}`;
+                return proxyOrigin + safePrefix + location;
+            }
+            try {
+                const parsed = new URL(location);
+                if (targetOrigins.includes(parsed.origin)) {
+                    if (!safePrefix) return `${proxyOrigin}/${encodeURIComponent(location)}`;
+                    return proxyOrigin + safePrefix + parsed.pathname + parsed.search + parsed.hash;
+                }
+            } catch (e) {}
+            if (/^https?:\/\//i.test(location)) return `${proxyOrigin}${safePrefix}/${encodeURIComponent(location)}`;
+            return location;
+        }
+
         if (decodedPath.startsWith('/http://') || decodedPath.startsWith('/https://')) {
             targetUrls = [decodedPath.substring(1)];
             remainingPath = '';
@@ -3339,12 +3472,15 @@ export default {
 
         let finalResponse = null;
         let lastError = null;
+        let targetOrigins = getTargetOrigins(targetUrls);
+        let finalTargetUrl = null;
 
         for (let i = 0; i < targetUrls.length; i++) {
             const targetUrlStr = targetUrls[i] + remainingPath + url.search;
             const targetUrl = new URL(targetUrlStr);
             const newHeaders = new Headers(request.headers);
             newHeaders.set("Host", targetUrl.host);
+            stripPanelCookie(newHeaders);
 
             const realIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || (request.headers.get("x-forwarded-for") || "").split(',')[0].trim();
             newHeaders.delete("cf-connecting-ip");
@@ -3353,6 +3489,8 @@ export default {
             newHeaders.delete("cf-visitor");
             newHeaders.delete("x-forwarded-for");
             newHeaders.delete("x-real-ip");
+            newHeaders.set("X-Forwarded-Proto", url.protocol.replace(':', ''));
+            newHeaders.set("X-Forwarded-Host", url.host);
 
             if (currentMode === 'realip_only' && realIp) {
                 newHeaders.set("X-Real-IP", realIp);
@@ -3360,26 +3498,29 @@ export default {
                 newHeaders.set("X-Real-IP", realIp);
                 newHeaders.set("X-Forwarded-For", realIp);
             } else if (isStrictMode) {
-                // 强力防 403 模式：强制清空原始端代理参数，对齐 Origin
-                newHeaders.delete("X-Forwarded-Proto");
-                newHeaders.delete("X-Forwarded-Host");
                 newHeaders.set("Origin", targetUrl.origin);
                 newHeaders.set("Referer", targetUrl.origin + "/");
                 if (realIp) {
                     newHeaders.set("X-Real-IP", realIp);
                     newHeaders.set("X-Forwarded-For", realIp);
                 }
+            } else {
+                const origin = newHeaders.get("Origin");
+                if (origin && origin === url.origin) newHeaders.set("Origin", targetUrl.origin);
+                const referer = newHeaders.get("Referer");
+                if (referer && referer.startsWith(url.origin)) newHeaders.set("Referer", referer.replace(url.origin, targetUrl.origin));
             }
 
-            const isStaticOrImage = /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(targetUrl.pathname) || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/)/i.test(targetUrl.pathname);
+            const isStaticOrImage = isStaticPath(targetUrl.pathname);
+            const authLikeState = hasAuthLikeState(newHeaders, targetUrl);
 
             let fetchInit = {
                 method: request.method,
                 headers: newHeaders,
-                redirect: 'manual'
+                redirect: isStaticOrImage ? 'follow' : 'manual'
             };
 
-            if (isStaticOrImage && enableCache) {
+            if (isStaticOrImage && enableCache && !authLikeState) {
                 fetchInit.cf = {
                     cacheEverything: true,
                     cacheTtl: 86400
@@ -3403,6 +3544,7 @@ export default {
                     continue;
                 }
                 finalResponse = response;
+                finalTargetUrl = targetUrl;
                 break;
             } catch (err) {
                 lastError = err;
@@ -3415,6 +3557,7 @@ export default {
         });
 
         const responseHeaders = new Headers(finalResponse.headers);
+        rewriteSetCookieForProxy(responseHeaders);
 
         // 统一前缀变量，确保绝对安全，不会抛出未定义错误
         // 假设你前面获取路由节点的变量叫 matchedPrefix，如果有值就带上斜杠
@@ -3425,9 +3568,9 @@ export default {
         // ==========================================
         if (enableProxy302 && [301, 302, 303, 307, 308].includes(finalResponse.status)) {
             const location = responseHeaders.get('Location');
-            if (location && /^https?:\/\//i.test(location)) {
-                // 🎯 补回 encodeURIComponent，防止播放器解析重定向头时发疯
-                responseHeaders.set('Location', `${safePrefix}/${encodeURIComponent(location)}`);
+            const rewrittenLocation = rewriteRedirectLocation(location, finalTargetUrl, targetOrigins, proxyOrigin, safePrefix);
+            if (rewrittenLocation !== location) {
+                responseHeaders.set('Location', rewrittenLocation);
             }
         }
 
@@ -3454,7 +3597,7 @@ export default {
                     });
                 }
                 if (modified) {
-                    responseHeaders.delete("Content-Length");
+                    dropBodyIntegrityHeaders(responseHeaders);
                     return new Response(JSON.stringify(data), {
                         status: finalResponse.status,
                         statusText: finalResponse.statusText,
@@ -3467,15 +3610,35 @@ export default {
             }
         }
 
+        if (finalResponse.status === 200 && responseHeaders.get("content-type")?.includes("json")) {
+            try {
+                let clonedRes = finalResponse.clone();
+                let text = await clonedRes.text();
+                if (hasJsonRewriteCandidate(text, targetOrigins)) {
+                    let data = JSON.parse(text);
+                    let rewritten = rewriteSourceUrlsInJson(data, targetOrigins, proxyOrigin, safePrefix);
+                    if (rewritten !== data) {
+                        dropBodyIntegrityHeaders(responseHeaders);
+                        return new Response(JSON.stringify(rewritten), {
+                            status: finalResponse.status,
+                            statusText: finalResponse.statusText,
+                            headers: responseHeaders
+                        });
+                    }
+                }
+            } catch (e) {
+                console.log("JSON 源站 URL 重写失败:", e.message);
+            }
+        }
+
         // 🚀 处理 M3U8 播放列表中的真实视频切片链接
         if (finalResponse.status === 200 && url.pathname.toLowerCase().endsWith('.m3u8')) {
             try {
                 let clonedRes = finalResponse.clone();
                 let text = await clonedRes.text();
                 if (text.includes('http://') || text.includes('https://')) {
-                    // 🎯 同样修复变量名
                     let modifiedText = text.replace(/(https?:\/\/[^\s]+)/g, proxyOrigin + safePrefix + '/$1');
-                    responseHeaders.delete("Content-Length");
+                    dropBodyIntegrityHeaders(responseHeaders);
                     return new Response(modifiedText, {
                         status: finalResponse.status,
                         statusText: finalResponse.statusText,
@@ -3488,12 +3651,21 @@ export default {
         }
 
         // 静态资源缓存控制保持不变
-        const isStaticRes = /\.(jpg|jpeg|gif|png|svg|ico|webp|js|css|woff2?|ttf|otf|map|webmanifest|srt|ass|vtt|sub)$/i.test(url.pathname) || /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/)/i.test(url.pathname);
-        if (isStaticRes && enableCache) {
+        const isStaticRes = isStaticPath(url.pathname);
+        const contentType = responseHeaders.get("content-type") || "";
+        const canCacheStaticRes = isStaticRes
+            && enableCache
+            && finalResponse.status === 200
+            && (
+                contentType.startsWith("image/")
+                || contentType.includes("javascript")
+                || contentType.includes("css")
+                || contentType.includes("font")
+                || contentType.includes("manifest")
+            );
+        if (canCacheStaticRes && !responseHeaders.has("Cache-Control")) {
             responseHeaders.set('Cache-Control', 'public, max-age=86400');
-            responseHeaders.delete('Expires');
-            responseHeaders.delete('Pragma');
-        } else {
+        } else if (!canCacheStaticRes) {
             responseHeaders.set('Cache-Control', 'no-store');
         }
 
