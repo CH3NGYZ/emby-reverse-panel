@@ -1,6 +1,6 @@
 // VERSION: 2.0.8
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.0.8";
+const CURRENT_VERSION = "2.0.9";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -690,9 +690,9 @@ const HTML_UI = `
                     type: 'line',
                     data: {
                         labels: labels,
-                        datasets: [{ label: '有效播放 (次)', data: counts, borderColor: '#0071e3', backgroundColor: 'rgba(0,113,227,0.1)', fill: true, tension: 0.3 }]
+                        datasets: [{ label: '有效播放视频数', data: counts, borderColor: '#0071e3', backgroundColor: 'rgba(0,113,227,0.1)', fill: true, tension: 0.3 }]
                     },
-                    options: { responsive: true, plugins: { title: { display: true, text: '过去 7 天全站播放并发趋势', font: {size: 16} } } }
+                    options: { responsive: true, plugins: { title: { display: true, text: '过去 7 天全站不同视频播放趋势', font: {size: 16} } } }
                 });
 
                 const locLabels = data.locations.map(i => i.country === 'CN' ? '中国大陆' : (i.country || '未知'));
@@ -721,7 +721,7 @@ const HTML_UI = `
                             <td data-label="目标节点"><span class="badge" style="background:rgba(0,113,227,0.1);color:var(--primary);">\${log.prefix}</span></td>
                             <td data-label="真实 IP" style="font-family:monospace; font-size:13px; color:var(--text-sec); word-break:break-all;">\${log.ip}</td>
                             <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${isChina ? '中国大陆' : (log.country || 'Unknown')}</span></td>
-                            <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.ua}">\${log.ua}</td>
+                            <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.item_name ? (log.item_name + ' | ') : ''}\${log.ua}">\${log.item_name ? ('🎞️ ' + log.item_name + '<br>') : ''}\${log.ua}</td>
                         \`;
                         tbody.appendChild(tr);
                     });
@@ -1415,7 +1415,8 @@ function renderWatchReportPanel(routes) {
                     
                     // 今日流量改为异步补写，避免 /api/routes 阻塞
                     const todayBw = r.todayBandwidth || '加载中...';
-                    const totalReqs = r.totalReqs || r.todayReqs || 0;
+                    const todayUniquePlays = r.todayUniquePlays || 0;
+                    const totalUniquePlays = r.totalUniquePlays || todayUniquePlays || 0;
 
                     proxyNodesForPing.push({ idx: idx, url: mainTarget });
 
@@ -1442,8 +1443,8 @@ function renderWatchReportPanel(routes) {
                                 <span id="bandwidth-\${r.prefix}" style="font-size:16px; font-weight:700; color:var(--primary);">\${todayBw}</span>
                             </div>
                             <div style="display:flex; flex-direction: column; gap: 4px; text-align: right;">
-                                <span style="font-size:12px; color:var(--text-sec);">📺 播放次数 (今日/累计)</span>
-                                <span style="font-size:16px; font-weight:700; color:#ff9500;">\${r.todayReqs} / \${totalReqs} 次</span>
+                                <span style="font-size:12px; color:var(--text-sec);">📺 不同视频播放 (今日/累计)</span>
+                                <span style="font-size:16px; font-weight:700; color:#ff9500;">\${todayUniquePlays} / \${totalUniquePlays} 部</span>
                             </div>
                         </div>
 
@@ -2396,19 +2397,45 @@ async function getCFTraffic(env, type) {
     }
 }
 
+// 作用：从播放进度上报请求中提取视频唯一 ID。
+// 目的：把播放累计改为按不同视频去重，避免同一视频重复心跳被多次计数。
+async function extractPlaybackItemId(request, url) {
+    const directItemId = url.searchParams.get('ItemId') || url.searchParams.get('itemId');
+    if (directItemId) return String(directItemId).trim();
+    if (request.method === 'GET' || request.method === 'HEAD') return '';
+
+    try {
+        const contentType = (request.headers.get('content-type') || '').toLowerCase();
+        const bodyText = await request.clone().text();
+        if (!bodyText) return '';
+
+        if (contentType.includes('application/json')) {
+            const payload = JSON.parse(bodyText);
+            return String(payload?.ItemId || payload?.itemId || '').trim();
+        }
+
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = new URLSearchParams(bodyText);
+            return String(formData.get('ItemId') || formData.get('itemId') || '').trim();
+        }
+    } catch (e) {}
+
+    return '';
+}
+
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
 // 作用：汇总今日播放、地区和流量数据并发送到 Telegram。
 // 目的：让管理员无需登录面板也能定时收到核心运营数据。
 async function sendTgStats(env, chatId) {
     try {
-        const totalQuery = await env.DB.prepare(`SELECT COUNT(*) as count FROM visitor_logs WHERE date(timestamp, '+8 hours') = date('now', '+8 hours')`).first();
+        const totalQuery = await env.DB.prepare(`SELECT COUNT(*) as count FROM daily_unique_plays WHERE date = date('now', '+8 hours')`).first();
         const topRegionQuery = await env.DB.prepare(`SELECT country, COUNT(*) as c FROM visitor_logs WHERE date(timestamp, '+8 hours') = date('now', '+8 hours') GROUP BY country ORDER BY c DESC LIMIT 1`).first();
         const topNodeQuery = await env.DB.prepare(`
-            SELECT r.remark, COUNT(v.id) as c 
-            FROM visitor_logs v 
-            LEFT JOIN routes r ON v.prefix = r.prefix 
-            WHERE date(v.timestamp, '+8 hours') = date('now', '+8 hours') 
-            GROUP BY v.prefix 
+            SELECT r.remark, COUNT(d.item_id) as c 
+            FROM daily_unique_plays d 
+            LEFT JOIN routes r ON d.prefix = r.prefix 
+            WHERE d.date = date('now', '+8 hours') 
+            GROUP BY d.prefix 
             ORDER BY c DESC LIMIT 1
         `).first();
 
@@ -2742,9 +2769,9 @@ export default {
                     getCFTraffic(env, 30)
                 ]);
 
-                const trend = await env.DB.prepare(`SELECT date(timestamp, '+8 hours') as date, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY date(timestamp, '+8 hours') ORDER BY date ASC`).all();
+                const trend = await env.DB.prepare(`SELECT date, COUNT(*) as count FROM daily_unique_plays WHERE date >= date('now', '+8 hours', '-6 days') GROUP BY date ORDER BY date ASC`).all();
                 const locations = await env.DB.prepare(`SELECT country, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY country ORDER BY count DESC`).all();
-                const recents = await env.DB.prepare(`SELECT prefix, datetime(timestamp, '+8 hours') as timestamp, ip, country, ua FROM visitor_logs ORDER BY timestamp DESC LIMIT 20`).all();
+                const recents = await env.DB.prepare(`SELECT prefix, item_name, datetime(timestamp, '+8 hours') as timestamp, ip, country, ua FROM visitor_logs ORDER BY timestamp DESC LIMIT 20`).all();
 
                 return Response.json({
                     success: true,
@@ -3288,8 +3315,9 @@ export default {
 
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL)`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date))`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id))`);
             // 大数据记录核心表：访客日志
-            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, ua TEXT)`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
 
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN mode TEXT DEFAULT 'off'`);
@@ -3315,10 +3343,19 @@ export default {
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN proxy_302 TEXT DEFAULT 'on'`);
             } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN item_id TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN item_name TEXT DEFAULT ''`);
+            } catch (e) {}
 
             // 数据防爆清理策略：自动清理过去 7 天的精细日志
             try {
                 await env.DB.exec(`DELETE FROM visitor_logs WHERE timestamp < datetime('now', '-7 days')`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`DELETE FROM daily_unique_plays WHERE date < date('now', '+8 hours', '-30 days')`);
             } catch (e) {}
 
             // 🚀 【方案A修复版】：独立并发查流，完美绕过 CF 免费版复杂度限制！
@@ -3329,11 +3366,13 @@ export default {
                 } = await env.DB.prepare(`
                     SELECT r.*, 
                     IFNULL(s.count, 0) as todayReqs,
+                    (SELECT COUNT(*) FROM daily_unique_plays d WHERE d.prefix = r.prefix AND d.date = ?) as todayUniquePlays,
+                    (SELECT COUNT(*) FROM daily_unique_plays d WHERE d.prefix = r.prefix) as totalUniquePlays,
                     (SELECT SUM(count) FROM request_stats WHERE prefix = r.prefix) as totalReqs
                     FROM routes r 
                     LEFT JOIN request_stats s ON r.prefix = s.prefix AND s.date = ? 
                     ORDER BY r.sort_order ASC, r.prefix ASC
-                `).bind(todayStr).all();
+                `).bind(todayStr, todayStr, todayStr).all();
 
                 return Response.json(routes || []);
             }
@@ -3593,16 +3632,25 @@ export default {
             try {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
                 const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
+                const playbackItemId = await extractPlaybackItemId(request, url);
+                const playbackItemName = (url.searchParams.get('Name') || url.searchParams.get('name') || '').trim();
 
                 let stmts = [
-                    env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) VALUES (?, ?, 1) ON CONFLICT(prefix, date) DO UPDATE SET count = count + 1`).bind(matchedPrefix, todayStr),
                     env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix)
                 ];
+
+                if (playbackItemId) {
+                    stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO daily_unique_plays (prefix, date, item_id, first_play) VALUES (?, ?, ?, ?)`)
+                        .bind(matchedPrefix, todayStr, playbackItemId, nowTime));
+                    stmts.push(env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) SELECT ?, ?, 1 WHERE changes() > 0 ON CONFLICT(prefix, date) DO UPDATE SET count = count + excluded.count`)
+                        .bind(matchedPrefix, todayStr));
+                }
 
                 const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
                 const clientCountry = request.headers.get("cf-ipcountry") || "Unknown";
                 const clientUa = request.headers.get("User-Agent") || "Unknown";
-                stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, ua) VALUES (?, ?, ?, ?)`).bind(matchedPrefix, clientIp, clientCountry, clientUa));
+                stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, ua, item_id, item_name) VALUES (?, ?, ?, ?, ?, ?)`)
+                    .bind(matchedPrefix, clientIp, clientCountry, clientUa, playbackItemId, playbackItemName));
 
                 ctx.waitUntil(env.DB.batch(stmts));
             } catch (e) {}
