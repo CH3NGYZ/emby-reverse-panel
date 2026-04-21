@@ -1,6 +1,6 @@
-// VERSION: 2.0.7
+// VERSION: 2.0.8
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.0.7";
+const CURRENT_VERSION = "2.0.8";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -265,7 +265,7 @@ const HTML_UI = `
                 </div>
             </div>
             
-            <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 PlaybackInfo 真实播放)</span></h3>
+            <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
             <div class="table-wrapper">
                 <table style="width: 100%;">
                     <thead><tr><th>访问时间</th><th>目标节点</th><th>真实 IP 地址</th><th>归属地</th><th>客户端/设备标识 (User-Agent)</th></tr></thead>
@@ -3584,12 +3584,12 @@ export default {
         });
 
         // ==========================================
-        // 2.7 防爆型精准日志拦截 (修复统计虚高：仅拦截点火请求)
+        // 2.7 防爆型精准日志拦截 (修复统计虚高：仅拦截进度上报)
         // ==========================================
-        const isNewPlaySession = /\/PlaybackInfo/i.test(url.pathname);
+        const isPlaybackProgressReport = /\/Sessions\/Playing\/Progress/i.test(url.pathname);
 
-        // 核心修改：仅在点火请求时才记录 "今日播放" 和 "最后活跃"
-        if (isNewPlaySession && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
+        // 仅在 Emby/Jellyfin 进度上报时记录 "今日播放" 和 "最后活跃"
+        if (isPlaybackProgressReport && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
             try {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
                 const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
