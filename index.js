@@ -1,6 +1,6 @@
-// VERSION: 2.0.8
+// VERSION: 2.1.0
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.0.9";
+const CURRENT_VERSION = "2.1.0";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -268,8 +268,8 @@ const HTML_UI = `
             <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
             <div class="table-wrapper">
                 <table style="width: 100%;">
-                    <thead><tr><th>访问时间</th><th>目标节点</th><th>真实 IP 地址</th><th>归属地</th><th>客户端/设备标识 (User-Agent)</th></tr></thead>
-                    <tbody id="logTableBody"><tr><td colspan="5" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
+                    <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>客户端/设备标识 (User-Agent)</th></tr></thead>
+                    <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -711,17 +711,22 @@ const HTML_UI = `
                 const tbody = document.getElementById('logTableBody');
                 tbody.innerHTML = '';
                 if(data.recents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 30px;">暂无日志记录</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 30px;">暂无日志记录</td></tr>';
                 } else {
                     data.recents.forEach(log => {
                         const tr = document.createElement('tr');
-                        const isChina = log.country === 'CN';
+                        const countryCode = (log.country || '').toUpperCase();
+                        const isChina = countryCode === 'CN';
+                        const displayCountry = !countryCode || countryCode === 'UNKNOWN' || countryCode === 'XX' || countryCode === 'T1' ? '未知' : (isChina ? '中国大陆' : countryCode);
+                        const watchDuration = formatWatchDuration(log.watch_seconds || 0);
                         tr.innerHTML = \`
                             <td data-label="访问时间" style="font-size:12px; white-space:nowrap;">\${log.timestamp}</td>
                             <td data-label="目标节点"><span class="badge" style="background:rgba(0,113,227,0.1);color:var(--primary);">\${log.prefix}</span></td>
+                            <td data-label="播放视频" style="font-size:12px; color:var(--text); word-break:break-word; white-space:normal; line-height:1.4;">\${log.item_name || '未识别视频名'}</td>
+                            <td data-label="观看时长" style="font-size:12px; color:var(--text); white-space:nowrap;">\${watchDuration}</td>
                             <td data-label="真实 IP" style="font-family:monospace; font-size:13px; color:var(--text-sec); word-break:break-all;">\${log.ip}</td>
-                            <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${isChina ? '中国大陆' : (log.country || 'Unknown')}</span></td>
-                            <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.item_name ? (log.item_name + ' | ') : ''}\${log.ua}">\${log.item_name ? ('🎞️ ' + log.item_name + '<br>') : ''}\${log.ua}</td>
+                            <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayCountry}</span></td>
+                            <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.ua}">\${log.ua}</td>
                         \`;
                         tbody.appendChild(tr);
                     });
@@ -729,7 +734,7 @@ const HTML_UI = `
 
             } catch (e) {
                 const errMsg = e.name === 'AbortError' ? '网络超时，CF 接口拥堵，请稍后重试' : e.message;
-                document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="5" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
+                document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="7" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
             }
         }
 
@@ -896,6 +901,23 @@ const HTML_UI = `
             const hours = String(parsed.getHours()).padStart(2, '0');
             const minutes = String(parsed.getMinutes()).padStart(2, '0');
             return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes;
+        }
+
+        // 作用：把 Progress 次数折算后的秒数格式化成可读时长。
+        // 目的：在独立播放记录里直观看到累计观看时长。
+        function formatWatchDuration(totalSeconds) {
+            const seconds = Math.max(parseInt(totalSeconds, 10) || 0, 0);
+            if (seconds < 60) return seconds + ' 秒';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainSeconds = seconds % 60;
+            if (hours > 0) {
+                if (remainSeconds > 0) return hours + ' 小时 ' + minutes + ' 分 ' + remainSeconds + ' 秒';
+                if (minutes > 0) return hours + ' 小时 ' + minutes + ' 分';
+                return hours + ' 小时';
+            }
+            if (remainSeconds > 0) return minutes + ' 分 ' + remainSeconds + ' 秒';
+            return minutes + ' 分';
         }
 
         // 作用：把毫秒级倒计时转换成“X天 Y小时”。
@@ -2771,7 +2793,14 @@ export default {
 
                 const trend = await env.DB.prepare(`SELECT date, COUNT(*) as count FROM daily_unique_plays WHERE date >= date('now', '+8 hours', '-6 days') GROUP BY date ORDER BY date ASC`).all();
                 const locations = await env.DB.prepare(`SELECT country, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY country ORDER BY count DESC`).all();
-                const recents = await env.DB.prepare(`SELECT prefix, item_name, datetime(timestamp, '+8 hours') as timestamp, ip, country, ua FROM visitor_logs ORDER BY timestamp DESC LIMIT 20`).all();
+                const recents = await env.DB.prepare(`
+                    SELECT prefix, item_id, item_name, datetime(MAX(timestamp), '+8 hours') as timestamp, ip, country, ua, COUNT(*) * 10 as watch_seconds
+                    FROM visitor_logs
+                    WHERE item_id != ''
+                    GROUP BY prefix, item_id
+                    ORDER BY MAX(timestamp) DESC
+                    LIMIT 20
+                `).all();
 
                 return Response.json({
                     success: true,
@@ -3647,7 +3676,8 @@ export default {
                 }
 
                 const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
-                const clientCountry = request.headers.get("cf-ipcountry") || "Unknown";
+                const rawCountry = request.headers.get("cf-ipcountry") || request.cf?.country || request.headers.get("x-vercel-ip-country") || request.headers.get("x-country-code") || '';
+                const clientCountry = rawCountry && rawCountry !== 'XX' && rawCountry !== 'T1' ? rawCountry : 'Unknown';
                 const clientUa = request.headers.get("User-Agent") || "Unknown";
                 stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, ua, item_id, item_name) VALUES (?, ?, ?, ?, ?, ?)`)
                     .bind(matchedPrefix, clientIp, clientCountry, clientUa, playbackItemId, playbackItemName));
