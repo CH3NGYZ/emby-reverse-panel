@@ -1,6 +1,6 @@
-// VERSION: 2.2.0
+// VERSION: 2.2.1
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.2.0";
+const CURRENT_VERSION = "2.2.1";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -233,7 +233,7 @@ const HTML_UI = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>MakkaPakka的反代面板</title>
+    <title>CH3NGYZ的反代面板</title>
     <style>${CSS_COMMON}</style>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -304,7 +304,7 @@ const HTML_UI = `
         <div class="content-wrap">
             <div class="header" style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap:wrap; gap:16px;">
                 <h1 style="margin: 0; font-size: 26px; display:flex; align-items:center; gap: 10px;">
-                    私有调度与反代核心
+                    反代面板
                     <button id="themeToggle" onclick="toggleDarkMode()" style="background:transparent;border:none;font-size:24px;cursor:pointer;padding:0;" title="切换深色模式">🌙</button>
                 </h1>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
@@ -318,13 +318,13 @@ const HTML_UI = `
                 </div>
             </div>
             <div class="tabs-nav">
-                <button type="button" class="tab-btn active" data-tab="proxy" onclick="switchTab('proxy', this)"><span class="tab-emoji">🔁</span><span class="tab-text">反代服务</span></button>
-                <button type="button" class="tab-btn" data-tab="dns" onclick="switchTab('dns', this)"><span class="tab-emoji">🌐</span><span class="tab-text">DNS服务</span></button>
-                <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)"><span class="tab-emoji">⚙️</span><span class="tab-text">系统设置</span></button>
+                <button type="button" class="tab-btn active" data-tab="watch" onclick="switchTab('watch', this)"><span class="tab-emoji">🛡️</span><span class="tab-text">保号</span></button>
+                <button type="button" class="tab-btn" data-tab="proxy" onclick="switchTab('proxy', this)"><span class="tab-emoji">🔁</span><span class="tab-text">反代</span></button>
+                <button type="button" class="tab-btn" data-tab="dns" onclick="switchTab('dns', this)"><span class="tab-emoji">🌐</span><span class="tab-text">DNS</span></button>
+                <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)"><span class="tab-emoji">⚙️</span><span class="tab-text">设置</span></button>
             </div>
 
-            <div id="tab-proxy" class="tab-panel active">
-            
+            <div id="tab-watch" class="tab-panel active">
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                         <div>
@@ -350,6 +350,9 @@ const HTML_UI = `
                         </table>
                     </div>
                 </div>
+            </div>
+
+            <div id="tab-proxy" class="tab-panel">
 
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
@@ -839,7 +842,7 @@ const HTML_UI = `
         }
 
         // 作用：切换底部导航对应的面板。
-        // 目的：在单页结构里控制反代、DNS、系统设置三个区域的显示状态。
+        // 目的：在单页结构里控制保号、反代、DNS、设置四个区域的显示状态。
         function switchTab(tabName, triggerEl) {
             document.querySelectorAll('.tab-panel').forEach(panel => {
                 panel.classList.toggle('active', panel.id === 'tab-' + tabName);
