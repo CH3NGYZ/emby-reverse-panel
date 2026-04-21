@@ -1,6 +1,6 @@
-// VERSION: 2.1.1
+// VERSION: 2.2.0
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.1.1";
+const CURRENT_VERSION = "2.2.0";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -242,7 +242,7 @@ const HTML_UI = `
     <div id="toast"></div>
     
     <div id="dashboardModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; overflow-y:auto; padding: 20px; backdrop-filter: blur(5px);">
-        <div class="card" style="max-width: 1000px; margin: 40px auto; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+        <div class="card" style="max-width: 90%; margin: 40px auto; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
             <button onclick="closeDashboard()" style="position:absolute; top:20px; right:20px; font-size:24px; background:none; border:none; cursor:pointer; color: var(--text-sec); transition: 0.2s;" onmouseover="this.style.color='#ff3b30'" onmouseout="this.style.color='var(--text-sec)'">✖</button>
             
             <h2 style="margin-top:0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
@@ -718,6 +718,7 @@ const HTML_UI = `
                         const countryCode = (log.country || '').toUpperCase();
                         const isChina = countryCode === 'CN';
                         const displayCountry = !countryCode || countryCode === 'UNKNOWN' || countryCode === 'XX' || countryCode === 'T1' ? '未知' : (isChina ? '中国大陆' : countryCode);
+                        const displayLocation = [displayCountry, log.region || '', log.city || ''].filter(Boolean).join(' / ');
                         const watchDuration = formatWatchDuration(log.watch_seconds || 0);
                         tr.innerHTML = \`
                             <td data-label="访问时间" style="font-size:12px; white-space:nowrap;">\${log.timestamp}</td>
@@ -725,7 +726,7 @@ const HTML_UI = `
                             <td data-label="播放视频" style="font-size:12px; color:var(--text); word-break:break-word; white-space:normal; line-height:1.4;">\${log.item_name || '未识别视频名'}</td>
                             <td data-label="观看时长" style="font-size:12px; color:var(--text); white-space:nowrap;">\${watchDuration}</td>
                             <td data-label="真实 IP" style="font-family:monospace; font-size:13px; color:var(--text-sec); word-break:break-all;">\${log.ip}</td>
-                            <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayCountry}</span></td>
+                            <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayLocation}</span></td>
                             <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.ua}">\${log.ua}</td>
                         \`;
                         tbody.appendChild(tr);
@@ -2424,6 +2425,10 @@ async function getCFTraffic(env, type) {
 async function extractPlaybackItemId(request, url) {
     const directItemId = url.searchParams.get('ItemId') || url.searchParams.get('itemId');
     if (directItemId) return String(directItemId).trim();
+
+    const pathMatch = url.pathname.match(/\/Items\/([^/]+)\/PlaybackInfo/i);
+    if (pathMatch?. [1]) return String(pathMatch[1]).trim();
+
     if (request.method === 'GET' || request.method === 'HEAD') return '';
 
     try {
@@ -2439,6 +2444,35 @@ async function extractPlaybackItemId(request, url) {
         if (contentType.includes('application/x-www-form-urlencoded')) {
             const formData = new URLSearchParams(bodyText);
             return String(formData.get('ItemId') || formData.get('itemId') || '').trim();
+        }
+    } catch (e) {}
+
+    return '';
+}
+
+// 作用：从 PlaybackInfo 或进度请求中提取用户 ID。
+// 目的：为后续补查 /Users/{userId}/Items/{itemId} 提供必要参数。
+async function extractPlaybackUserId(request, url) {
+    const directUserId = url.searchParams.get('UserId') || url.searchParams.get('userId');
+    if (directUserId) return String(directUserId).trim();
+
+    const pathMatch = url.pathname.match(/\/Users\/([^/]+)/i);
+    if (pathMatch?. [1]) return String(pathMatch[1]).trim();
+    if (request.method === 'GET' || request.method === 'HEAD') return '';
+
+    try {
+        const contentType = (request.headers.get('content-type') || '').toLowerCase();
+        const bodyText = await request.clone().text();
+        if (!bodyText) return '';
+
+        if (contentType.includes('application/json')) {
+            const payload = JSON.parse(bodyText);
+            return String(payload?.UserId || payload?.userId || payload?.User?.Id || '').trim();
+        }
+
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = new URLSearchParams(bodyText);
+            return String(formData.get('UserId') || formData.get('userId') || '').trim();
         }
     } catch (e) {}
 
@@ -2485,6 +2519,86 @@ function extractPlaybackItemNameFromPayload(payload) {
         payload?.NowPlayingItem?.Name ||
         ''
     ).trim();
+}
+
+// 作用：把条目详情整理成面板展示用标题。
+// 目的：电视剧显示为“剧名-SxxExx-单集名”，电影保持原片名。
+function formatPlaybackItemName(itemInfo) {
+    if (!itemInfo || typeof itemInfo !== 'object') return '';
+
+    const type = String(itemInfo.Type || '').trim();
+    const name = String(itemInfo.Name || '').trim();
+    const seriesName = String(itemInfo.SeriesName || '').trim();
+    const hasSeason = itemInfo.ParentIndexNumber !== undefined && itemInfo.ParentIndexNumber !== null && itemInfo.ParentIndexNumber !== '';
+    const hasEpisode = itemInfo.IndexNumber !== undefined && itemInfo.IndexNumber !== null && itemInfo.IndexNumber !== '';
+    const seasonNumber = hasSeason ? Number(itemInfo.ParentIndexNumber) : NaN;
+    const episodeNumber = hasEpisode ? Number(itemInfo.IndexNumber) : NaN;
+
+    if (type === 'Episode') {
+        const seasonPart = Number.isFinite(seasonNumber) ? `S${String(seasonNumber).padStart(2, '0')}` : '';
+        const episodePart = Number.isFinite(episodeNumber) ? `E${String(episodeNumber).padStart(2, '0')}` : '';
+        const numberPart = [seasonPart, episodePart].filter(Boolean).join('');
+        return [seriesName, numberPart, name].filter(Boolean).join('-').trim();
+    }
+
+    if (type === 'Season') {
+        const seasonPart = Number.isFinite(seasonNumber) ? `S${String(seasonNumber).padStart(2, '0')}` : name;
+        return [seriesName, seasonPart].filter(Boolean).join('-').trim();
+    }
+
+    return name;
+}
+
+// 作用：通过当前反代节点补查条目详情里的影片名。
+// 目的：让 PlaybackInfo 拿不到 Name 时，仍能按 prefix + userId + itemId 拿到真实标题。
+async function fetchPlaybackItemNameByUser(targetUrls, userId, itemId, request) {
+    if (!Array.isArray(targetUrls) || targetUrls.length === 0 || !userId || !itemId) return '';
+    try {
+        const itemUrl = new URL(`/emby/Users/${encodeURIComponent(userId)}/Items/${encodeURIComponent(itemId)}`, targetUrls[0]).toString();
+        const headers = new Headers();
+        const passthroughHeaders = [
+            'x-emby-authorization',
+            'x-emby-token',
+            'authorization',
+            'user-agent',
+            'accept',
+            'accept-encoding',
+            'content-type'
+        ];
+        passthroughHeaders.forEach(name => {
+            const value = request.headers.get(name);
+            if (value) headers.set(name, value);
+        });
+        headers.delete('content-length');
+        if (!headers.has('accept')) headers.set('accept', 'application/json');
+
+        const response = await fetch(itemUrl, {
+            method: 'GET',
+            headers,
+            redirect: 'manual'
+        });
+        const responseText = await response.text();
+        console.log('PlaybackInfo Item Lookup:', JSON.stringify({
+            url: itemUrl,
+            status: response.status,
+            ok: response.ok,
+            body: responseText.slice(0, 1000)
+        }));
+        if (!response.ok) return '';
+        const itemInfo = JSON.parse(responseText);
+        return formatPlaybackItemName(itemInfo);
+    } catch (e) {
+        console.log('PlaybackInfo Item Lookup Error:', e.message);
+        return '';
+    }
+}
+
+// 作用：构建 prefix + itemId 维度的片名绑定语句。
+// 目的：让数据大屏按节点和条目精确回显影片名。
+function buildPlaybackItemRefStmt(env, prefix, itemId, itemName, nowTime) {
+    if (!env?.DB || !prefix || !itemId || !itemName) return null;
+    return env.DB.prepare(`INSERT INTO playback_item_refs (prefix, item_id, item_name, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(prefix, item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
+        .bind(prefix, itemId, itemName, nowTime);
 }
 
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
@@ -2836,11 +2950,22 @@ export default {
                 const trend = await env.DB.prepare(`SELECT date, COUNT(*) as count FROM daily_unique_plays WHERE date >= date('now', '+8 hours', '-6 days') GROUP BY date ORDER BY date ASC`).all();
                 const locations = await env.DB.prepare(`SELECT country, COUNT(*) as count FROM visitor_logs WHERE timestamp >= datetime('now', '-7 days') GROUP BY country ORDER BY count DESC`).all();
                 const recents = await env.DB.prepare(`
-                    SELECT prefix, item_id, item_name, datetime(MAX(timestamp), '+8 hours') as timestamp, ip, country, ua, COUNT(*) * 10 as watch_seconds
-                    FROM visitor_logs
-                    WHERE item_id != ''
-                    GROUP BY prefix, item_id
-                    ORDER BY MAX(timestamp) DESC
+                    SELECT 
+                        v.prefix,
+                        v.item_id,
+                        COALESCE(NULLIF(MAX(r.item_name), ''), NULLIF(MAX(v.item_name), ''), '未识别视频名') as item_name,
+                        datetime(MAX(v.timestamp), '+8 hours') as timestamp,
+                        MAX(v.ip) as ip,
+                        MAX(v.country) as country,
+                        MAX(v.region) as region,
+                        MAX(v.city) as city,
+                        MAX(v.ua) as ua,
+                        COUNT(*) * 10 as watch_seconds
+                    FROM visitor_logs v
+                    LEFT JOIN playback_item_refs r ON r.prefix = v.prefix AND r.item_id = v.item_id
+                    WHERE v.item_id != ''
+                    GROUP BY v.prefix, v.item_id
+                    ORDER BY MAX(v.timestamp) DESC
                     LIMIT 20
                 `).all();
 
@@ -3388,8 +3513,9 @@ export default {
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date))`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id))`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS playback_items (item_id TEXT PRIMARY KEY, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS playback_item_refs (prefix TEXT, item_id TEXT, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, item_id))`);
             // 大数据记录核心表：访客日志
-            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
 
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN mode TEXT DEFAULT 'off'`);
@@ -3421,6 +3547,12 @@ export default {
             try {
                 await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN item_name TEXT DEFAULT ''`);
             } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN region TEXT DEFAULT ''`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN city TEXT DEFAULT ''`);
+            } catch (e) {}
 
             // 数据防爆清理策略：自动清理过去 7 天的精细日志
             try {
@@ -3431,6 +3563,9 @@ export default {
             } catch (e) {}
             try {
                 await env.DB.exec(`DELETE FROM playback_items WHERE updated_at < datetime('now', '-30 days')`);
+            } catch (e) {}
+            try {
+                await env.DB.exec(`DELETE FROM playback_item_refs WHERE updated_at < datetime('now', '-30 days')`);
             } catch (e) {}
 
             // 🚀 【方案A修复版】：独立并发查流，完美绕过 CF 免费版复杂度限制！
@@ -3708,12 +3843,22 @@ export default {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
                 const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
                 const playbackItemId = await extractPlaybackItemId(request, url);
-                let playbackItemName = await extractPlaybackItemName(request, url);
+                const playbackUserId = await extractPlaybackUserId(request, url);
+                let playbackItemName = '';
+                if (playbackItemId) {
+                    try {
+                        const cachedRef = await env.DB.prepare(`SELECT item_name FROM playback_item_refs WHERE prefix = ? AND item_id = ?`).bind(matchedPrefix, playbackItemId).first();
+                        playbackItemName = String(cachedRef?.item_name || '').trim();
+                    } catch (e) {}
+                }
                 if (!playbackItemName && playbackItemId) {
                     try {
                         const cachedItem = await env.DB.prepare(`SELECT item_name FROM playback_items WHERE item_id = ?`).bind(playbackItemId).first();
                         playbackItemName = String(cachedItem?.item_name || '').trim();
                     } catch (e) {}
+                }
+                if (!playbackItemName && playbackUserId && playbackItemId) {
+                    playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
                 }
 
                 let stmts = [
@@ -3728,15 +3873,19 @@ export default {
                     if (playbackItemName) {
                         stmts.push(env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
                             .bind(playbackItemId, playbackItemName, nowTime));
+                        const refStmt = buildPlaybackItemRefStmt(env, matchedPrefix, playbackItemId, playbackItemName, nowTime);
+                        if (refStmt) stmts.push(refStmt);
                     }
                 }
 
                 const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
                 const rawCountry = request.headers.get("cf-ipcountry") || request.cf?.country || request.headers.get("x-vercel-ip-country") || request.headers.get("x-country-code") || '';
                 const clientCountry = rawCountry && rawCountry !== 'XX' && rawCountry !== 'T1' ? rawCountry : 'Unknown';
+                const clientRegion = String(request.cf?.region || request.headers.get('cf-region') || '').trim();
+                const clientCity = String(request.cf?.city || request.headers.get('cf-city') || '').trim();
                 const clientUa = request.headers.get("User-Agent") || "Unknown";
-                stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, ua, item_id, item_name) VALUES (?, ?, ?, ?, ?, ?)`)
-                    .bind(matchedPrefix, clientIp, clientCountry, clientUa, playbackItemId, playbackItemName));
+                stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, region, city, ua, item_id, item_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+                    .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, playbackItemId, playbackItemName));
 
                 ctx.waitUntil(env.DB.batch(stmts));
             } catch (e) {}
@@ -3867,15 +4016,47 @@ export default {
                 let clonedRes = finalResponse.clone();
                 let data = await clonedRes.json();
                 let modified = false;
-                const playbackItemId = String(url.searchParams.get('ItemId') || url.searchParams.get('itemId') || data?.ItemId || data?.itemId || '').trim();
-                const playbackItemName = extractPlaybackItemNameFromPayload(data);
+                const playbackItemId = String(url.searchParams.get('ItemId') || url.searchParams.get('itemId') || data?.ItemId || data?.itemId || data?.MediaSources?. [0]?.ItemId || '').trim();
+                const playbackUserId = await extractPlaybackUserId(request, url);
+                const debugHeaders = {};
+                [
+                    'x-emby-authorization',
+                    'x-emby-token',
+                    'authorization',
+                    'user-agent',
+                    'accept',
+                    'accept-encoding',
+                    'content-type',
+                    'content-length'
+                ].forEach(name => {
+                    const value = request.headers.get(name);
+                    if (value) debugHeaders[name] = value;
+                });
+                console.log('PlaybackInfo Debug:', JSON.stringify({
+                    prefix: matchedPrefix || '',
+                    userId: playbackUserId,
+                    itemId: playbackItemId,
+                    headers: debugHeaders
+                }));
+                let playbackItemName = '';
+                if (env.DB && matchedPrefix && playbackItemId) {
+                    try {
+                        const cachedRef = await env.DB.prepare(`SELECT item_name FROM playback_item_refs WHERE prefix = ? AND item_id = ?`).bind(matchedPrefix, playbackItemId).first();
+                        playbackItemName = String(cachedRef?.item_name || '').trim();
+                    } catch (e) {}
+                }
+                if (!playbackItemName && matchedPrefix && playbackUserId && playbackItemId) {
+                    playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
+                }
                 if (env.DB && playbackItemId && playbackItemName) {
                     const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
-                    ctx?.waitUntil?.(
+                    const stmts = [
                         env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
                         .bind(playbackItemId, playbackItemName, nowTime)
-                        .run()
-                    );
+                    ];
+                    const refStmt = buildPlaybackItemRefStmt(env, matchedPrefix, playbackItemId, playbackItemName, nowTime);
+                    if (refStmt) stmts.push(refStmt);
+                    ctx?.waitUntil?.(env.DB.batch(stmts));
                 }
                 if (data && data.MediaSources) {
                     data.MediaSources.forEach(source => {
