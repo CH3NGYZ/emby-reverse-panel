@@ -1,6 +1,6 @@
-// VERSION: 2.1.0
+// VERSION: 2.1.1
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.1.0";
+const CURRENT_VERSION = "2.1.1";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -268,7 +268,7 @@ const HTML_UI = `
             <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
             <div class="table-wrapper">
                 <table style="width: 100%;">
-                    <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>客户端/设备标识 (User-Agent)</th></tr></thead>
+                    <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
                     <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
                 </table>
             </div>
@@ -2445,6 +2445,48 @@ async function extractPlaybackItemId(request, url) {
     return '';
 }
 
+// 作用：从播放进度上报请求里提取视频名称。
+// 目的：让 Progress 自带片名时可以直接入库，无需等待 PlaybackInfo 缓存补全。
+async function extractPlaybackItemName(request, url) {
+    const directName = url.searchParams.get('Name') || url.searchParams.get('name');
+    if (directName) return String(directName).trim();
+    if (request.method === 'GET' || request.method === 'HEAD') return '';
+
+    try {
+        const contentType = (request.headers.get('content-type') || '').toLowerCase();
+        const bodyText = await request.clone().text();
+        if (!bodyText) return '';
+
+        if (contentType.includes('application/json')) {
+            return extractPlaybackItemNameFromPayload(JSON.parse(bodyText));
+        }
+
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = new URLSearchParams(bodyText);
+            return String(formData.get('Name') || formData.get('name') || formData.get('ItemName') || '').trim();
+        }
+    } catch (e) {}
+
+    return '';
+}
+
+// 作用：从 PlaybackInfo/Progress 请求或响应中提取视频名称。
+// 目的：优先记录可读片名，避免播放日志里只有 ItemId 没有标题。
+function extractPlaybackItemNameFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') return '';
+    return String(
+        payload.Name ||
+        payload.name ||
+        payload.ItemName ||
+        payload.itemName ||
+        payload.NowPlayingItemName ||
+        payload.nowPlayingItemName ||
+        payload?.Item?.Name ||
+        payload?.NowPlayingItem?.Name ||
+        ''
+    ).trim();
+}
+
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
 // 作用：汇总今日播放、地区和流量数据并发送到 Telegram。
 // 目的：让管理员无需登录面板也能定时收到核心运营数据。
@@ -3345,6 +3387,7 @@ export default {
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL)`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date))`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id))`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS playback_items (item_id TEXT PRIMARY KEY, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
             // 大数据记录核心表：访客日志
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
 
@@ -3386,6 +3429,9 @@ export default {
             try {
                 await env.DB.exec(`DELETE FROM daily_unique_plays WHERE date < date('now', '+8 hours', '-30 days')`);
             } catch (e) {}
+            try {
+                await env.DB.exec(`DELETE FROM playback_items WHERE updated_at < datetime('now', '-30 days')`);
+            } catch (e) {}
 
             // 🚀 【方案A修复版】：独立并发查流，完美绕过 CF 免费版复杂度限制！
             if (request.method === 'GET') {
@@ -3401,7 +3447,7 @@ export default {
                     FROM routes r 
                     LEFT JOIN request_stats s ON r.prefix = s.prefix AND s.date = ? 
                     ORDER BY r.sort_order ASC, r.prefix ASC
-                `).bind(todayStr, todayStr, todayStr).all();
+                `).bind(todayStr, todayStr).all();
 
                 return Response.json(routes || []);
             }
@@ -3662,7 +3708,13 @@ export default {
                 const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
                 const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
                 const playbackItemId = await extractPlaybackItemId(request, url);
-                const playbackItemName = (url.searchParams.get('Name') || url.searchParams.get('name') || '').trim();
+                let playbackItemName = await extractPlaybackItemName(request, url);
+                if (!playbackItemName && playbackItemId) {
+                    try {
+                        const cachedItem = await env.DB.prepare(`SELECT item_name FROM playback_items WHERE item_id = ?`).bind(playbackItemId).first();
+                        playbackItemName = String(cachedItem?.item_name || '').trim();
+                    } catch (e) {}
+                }
 
                 let stmts = [
                     env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix)
@@ -3673,6 +3725,10 @@ export default {
                         .bind(matchedPrefix, todayStr, playbackItemId, nowTime));
                     stmts.push(env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) SELECT ?, ?, 1 WHERE changes() > 0 ON CONFLICT(prefix, date) DO UPDATE SET count = count + excluded.count`)
                         .bind(matchedPrefix, todayStr));
+                    if (playbackItemName) {
+                        stmts.push(env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
+                            .bind(playbackItemId, playbackItemName, nowTime));
+                    }
                 }
 
                 const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
@@ -3811,6 +3867,16 @@ export default {
                 let clonedRes = finalResponse.clone();
                 let data = await clonedRes.json();
                 let modified = false;
+                const playbackItemId = String(url.searchParams.get('ItemId') || url.searchParams.get('itemId') || data?.ItemId || data?.itemId || '').trim();
+                const playbackItemName = extractPlaybackItemNameFromPayload(data);
+                if (env.DB && playbackItemId && playbackItemName) {
+                    const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
+                    ctx?.waitUntil?.(
+                        env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
+                        .bind(playbackItemId, playbackItemName, nowTime)
+                        .run()
+                    );
+                }
                 if (data && data.MediaSources) {
                     data.MediaSources.forEach(source => {
                         ['DirectStreamUrl', 'TranscodingUrl'].forEach(key => {
