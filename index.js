@@ -1,6 +1,6 @@
-// VERSION: 2.2.2
+// VERSION: 2.2.3
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.2.2";
+const CURRENT_VERSION = "2.2.3";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -64,6 +64,10 @@ const CSS_COMMON = `
     .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
     .dashboard-log-table th, .dashboard-log-table td { padding: 10px; }
     .dashboard-log-location-badge { display: inline-block; width: fit-content; max-width: 100%; min-width: 0; margin-left: auto; text-align: left; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.4; }
+    .dashboard-top5-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 30px; margin-bottom: 16px; }
+    .dashboard-top5-loading { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-sec); white-space: nowrap; }
+    .dashboard-top5-spinner { display: inline-block; animation: dashboard-spin 0.9s linear infinite; transform-origin: center; }
+    @keyframes dashboard-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     
     .btn-edit { padding: 8px 14px; background: var(--card); color: var(--primary); border: 1px solid var(--primary); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
     .btn-del { padding: 8px 14px; background: var(--card); color: #ff3b30; border: 1px solid #ff3b30; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
@@ -576,6 +580,7 @@ const HTML_UI = `
         let sortableInstance = null;
         let trendChartInstance = null;
         let locationChartInstance = null;
+        let bandwidthPendingCount = 0;
 
 
         // 设置 Chart.js 响应暗色模式
@@ -598,9 +603,15 @@ const HTML_UI = `
                 return val;
             }
 
-            let top5Html = '<h3 style="margin-top: 30px; margin-bottom:16px;">🏆 今日节点流量消耗 TOP 5</h3><div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">';
+            let top5Html = '<div class="dashboard-top5-header"><h3 style="margin:0;">🏆 今日节点流量消耗 TOP 5</h3>';
 
-            const nodes = Array.isArray(window.globalRoutesData) ? window.globalRoutesData : [];
+            const routesReady = Array.isArray(window.globalRoutesData);
+            const nodes = routesReady ? window.globalRoutesData : [];
+            const listGrid = document.getElementById('list-grid');
+            const routeCards = listGrid ? listGrid.querySelectorAll('.route-item') : [];
+            const hasRenderedRouteCards = routeCards.length > 0;
+            const hasConfirmedEmptyState = !!(listGrid && listGrid.textContent.includes('暂无配置任何反代节点'));
+            const showRouteLoading = !routesReady || bandwidthPendingCount > 0 || (!hasRenderedRouteCards && !hasConfirmedEmptyState);
             const visibleNodes = nodes.map(r => ({
                 prefix: r.prefix || '未知',
                 remark: r.remark || r.prefix || '未知',
@@ -613,6 +624,12 @@ const HTML_UI = `
                 .sort((a, b) => parseTrafficToBytes(b.todayBandwidth) - parseTrafficToBytes(a.todayBandwidth))
                 .slice(0, 5);
 
+            if (showRouteLoading || hasPendingNodes) {
+                top5Html += '<div class="dashboard-top5-loading"><span class="dashboard-top5-spinner">🔄</span><span>正在读取节点列表</span></div>';
+            }
+
+            top5Html += '</div><div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">';
+
             if (validNodes.length > 0) {
                 top5Html += '<ul style="margin:0; padding-left: 20px; line-height: 2; font-size: 14px; color: var(--text);">';
                 validNodes.forEach((r, idx) => {
@@ -620,14 +637,13 @@ const HTML_UI = `
                     top5Html += '<li><strong style="color:' + rankColor + '; font-size: 15px;">#' + (idx + 1) + '</strong> ' + r.remark + ' (/' + r.prefix + ') —— 消耗: <strong style="color:var(--primary); font-family: monospace;">' + r.todayBandwidth + '</strong></li>';
                 });
                 top5Html += '</ul>';
-            } else if (hasPendingNodes) {
-                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">正在抓取数据，请稍候...</div>';
+            } else if (showRouteLoading || hasPendingNodes) {
+                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">正在抓取节点流量数据...</div>';
             } else if (visibleNodes.length > 0) {
                 top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">今日暂无节点产生流量</div>';
             } else {
                 top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">主页暂无节点卡片</div>';
             }
-
             top5Html += '</div>';
             top5Container.innerHTML = top5Html;
         }
@@ -1277,10 +1293,19 @@ function renderWatchReportPanel(routes) {
         // 作用：批量调度多个节点的带宽补写请求。
         // 目的：错峰请求后端，降低同时查询所有节点时的压力。
         function loadRouteBandwidth(prefixes) {
-            if (!Array.isArray(prefixes) || prefixes.length === 0) return;
+            if (!Array.isArray(prefixes) || prefixes.length === 0) {
+                bandwidthPendingCount = 0;
+                renderDashboardTop5();
+                return;
+            }
+            bandwidthPendingCount = prefixes.length;
+            renderDashboardTop5();
             prefixes.forEach((prefix, index) => {
                 setTimeout(() => {
-                    loadSingleRouteBandwidth(prefix);
+                    Promise.resolve(loadSingleRouteBandwidth(prefix)).finally(() => {
+                        bandwidthPendingCount = Math.max(0, bandwidthPendingCount - 1);
+                        renderDashboardTop5();
+                    });
                 }, index * 120);
             });
         }
