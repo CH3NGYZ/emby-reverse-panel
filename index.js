@@ -64,10 +64,17 @@ const CSS_COMMON = `
     .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
     .dashboard-log-table th, .dashboard-log-table td { padding: 10px; }
     .dashboard-log-location-badge { display: inline-block; width: fit-content; max-width: 100%; min-width: 0; margin-left: auto; text-align: left; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.4; }
-    .dashboard-top5-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 30px; margin-bottom: 16px; }
+    .dashboard-top5-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; margin-bottom: 16px; }
     .dashboard-top5-loading { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-sec); white-space: nowrap; }
     .dashboard-top5-spinner { display: inline-block; animation: dashboard-spin 0.9s linear infinite; transform-origin: center; }
     @keyframes dashboard-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+    .dashboard-section-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.03); min-width: 0; display: flex; flex-direction: column; }
+    .dashboard-section-title { margin: 0 0 16px 0; font-size: 18px; }
+    .dashboard-section-card.wide { grid-column: 1 / -1; }
+    #dashboard-top5-anchor, #top5-simple-container { flex: 1; display: flex; flex-direction: column; min-height: 100%; }
+    .dashboard-top5-card { flex: 1; display: flex; flex-direction: column; min-height: 100%; }
+    .dashboard-top5-body { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; }
     
     .btn-edit { padding: 8px 14px; background: var(--card); color: var(--primary); border: 1px solid var(--primary); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
     .btn-del { padding: 8px 14px; background: var(--card); color: #ff3b30; border: 1px solid #ff3b30; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
@@ -147,6 +154,7 @@ const CSS_COMMON = `
         .tab-btn .tab-emoji { font-size: 18px; }
         .tab-btn .tab-text { font-size: 12px; }
         .node-grid { grid-template-columns: 1fr; }
+        .dashboard-grid { grid-template-columns: 1fr; }
         .table-wrapper { border: none; background: transparent; overflow: visible; }
         table, thead, tbody, th, td, tr { display: block; width: 100%; }
         thead { display: none; }
@@ -308,48 +316,57 @@ const HTML_UI = `
             </div>
 
             <div id="tab-dashboard" class="tab-panel">
-                <div class="card" style="position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.08);">
-                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;">
-                        <h2 style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                            <span>📊 数据大屏</span><span style="font-size:14px; font-weight: normal; color: var(--text-sec);">精确访客画像分析</span>
-                        </h2>
-                    </div>
-                    <div id="cf-trace-card" style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; font-size: 14px; gap: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div style="font-size: 24px;">📍</div>
-                            <div>
-                                <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">访客入口 (地区与机房)</div>
-                                <div id="trace-entry" style="font-weight:600; color:var(--text); font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                <div class="dashboard-grid">
+                    <div class="dashboard-section-card dashboard-first-row-card">
+                        <h3 style = "margin:0 0 12px 0; font-size:16px;">📍访客信息 </h3>
+                        <div id="cf-trace-card" style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; font-size: 14px; gap: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="font-size: 24px;">📍</div>
+                                <div>
+                                    <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">访客入口 (地区与机房)</div>
+                                    <div id="trace-entry" style="font-weight:600; color:var(--text); font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <div style="font-size: 24px;">🚀</div>
+                                <div>
+                                    <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">Worker 实际落地机房</div>
+                                    <div id="trace-egress" style="font-weight:600; color:#34c759; font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                                </div>
                             </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div style="font-size: 24px;">🚀</div>
-                            <div>
-                                <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">Worker 实际落地机房</div>
-                                <div id="trace-egress" style="font-weight:600; color:#34c759; font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                        <h3 style="margin:0 0 12px 0; font-size:16px;">📈 历史流量</h3>
+                        <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap; width: 100%; max-width: 100%;">
+                            <span> 今天: <strong id="trafficToday">加载中...</strong></span>
+                            <span>1周内: <strong id="traffic7d">加载中...</strong></span>
+                            <span>1月内: <strong id="traffic30d">加载中...</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-section-card dashboard-first-row-card">
+                        <div id="dashboard-top5-anchor"></div>
+                    </div>
+
+                    <div class="dashboard-section-card wide">
+                        <h3 style="margin: 0 0 16px 0;">🕵️ 观看记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
+                        <div class="table-wrapper">
+                            <table class="dashboard-log-table" style="width: 100%;">
+                                <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
+                                <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-section-card wide">
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch;">
+                            <div style="flex: 2 1 520px; min-width: min(100%, 520px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
+                                <h3 style="margin:0 0 16px 0;">📉 播放趋势</h3>
+                                <canvas id="trendChart"></canvas>
                             </div>
-                        </div>
-                    </div>
-                    <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap; width: 100%; max-width: 100%; margin-bottom: 20px;">
-                        <span> 今天: <strong id="trafficToday">加载中...</strong></span>
-                        <span>1周内: <strong id="traffic7d">加载中...</strong></span>
-                        <span>1月内: <strong id="traffic30d">加载中...</strong></span>
-                    </div>
-                    <div id="dashboard-top5-anchor"></div>
-                    
-                    <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
-                    <div class="table-wrapper">
-                        <table class="dashboard-log-table" style="width: 100%;">
-                            <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
-                            <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
-                        </table>
-                    </div>
-                    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top:30px; align-items: stretch;">
-                        <div style="flex: 2 1 520px; min-width: min(100%, 520px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
-                            <canvas id="trendChart"></canvas>
-                        </div>
-                        <div style="flex: 1 1 260px; min-width: min(100%, 260px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; justify-content: center; align-items: center;">
-                            <canvas id="locationChart"></canvas>
+                            <div style="flex: 1 1 260px; min-width: min(100%, 260px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                                <h3 style="margin:0 0 16px 0; align-self: flex-start;">🌍 来源占比</h3>
+                                <canvas id="locationChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -359,43 +376,12 @@ const HTML_UI = `
 
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                        <h2 style="margin:0; font-size:18px;">已反代的媒体库</h2>
-                        <div style="display: flex; gap: 10px; align-items:center; flex-wrap: wrap;">
-                            <button class="btn-submit" onclick="pingAllNodes()" style="background:#32ade6; padding: 10px 14px; font-size: 13px;">⚡ 全局测速</button>
-                            <button id="btnPurge" class="btn-submit" onclick="purgeCache()" style="background:#ff2d55; padding: 10px 14px; font-size: 13px;">🧹 刷新全站海报</button>
-                            <input type="text" id="searchNode" class="search-input" placeholder="🔍 搜索备注或后缀查找..." onkeyup="filterNodesList()">
-                        </div>
-                    </div>
-                    <div style="background: rgba(0, 122, 255, 0.05); padding: 12px 20px; border-radius: 12px; border: 1px dashed var(--primary); margin-bottom: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <label style="cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                    <input type="checkbox" id="selectAllNodes" onchange="toggleSelectAllNodes(this)" style="width: 18px; height: 18px; accent-color: var(--primary);"> 
-                    全选节点
-                </label>
-                
-                <div style="width: 2px; height: 20px; background: var(--border);"></div> <select id="batch-mode-select" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600;">
-                    <option value="">🔄 读取模式中...</option>
-                </select>
-
-                <button onclick="batchUpdateModes()" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,113,227,0.2);">
-                    🚀 批量应用模式
-                </button>
-
-                <span id="batch-status" style="font-size: 13px; font-weight: 600;"></span>
-            </div>
-                    <div id="list-grid" class="node-grid">
-                        <div style="text-align:center; color:var(--text-sec); grid-column: 1 / -1; padding: 40px;">读取数据中...</div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
                         <h2 style="margin:0; font-size:18px;">部署 / 编辑反代节点</h2>
                         <div>
                         <button class="btn-submit" onclick="exportConfig()" style="background:#5856d6; padding: 8px 16px; font-size: 13px;">📦 导出配置</button>
                         <button class="btn-submit" onclick="importConfig()" style="background:#ff9500; padding: 8px 16px; font-size: 13px;">📥 导入配置</button>
                     </div>
                 </div>
-                
                 <form id="addForm" style="display: flex; flex-direction: column; gap: 16px;">
                     <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                         <input type="hidden" id="oldPrefix" value="">
@@ -418,7 +404,6 @@ const HTML_UI = `
                                 <span id="iconSelectText" style="flex:1; color: var(--text-sec); font-size:14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">点击选择图标 (默认 🎬)</span>
                                 <input type="hidden" id="iconUrl" value="">
                             </div>
-                            
                             <div id="iconPickerPanel" style="display:none; position: absolute; top: 100%; left: 0; width: 100%; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); z-index: 100; margin-top: 8px; flex-direction: column; gap: 10px;">
                                 <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
                                     <input type="text" id="customIconUrlInput" placeholder="输入自定义 JSON 图标库链接..." style="flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background:var(--bg); font-size: 13px; color: var(--text);">
@@ -451,6 +436,36 @@ const HTML_UI = `
                     </div>
                 </form>
             </div>
+
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px;">已反代的媒体库</h2>
+                        <div style="display: flex; gap: 10px; align-items:center; flex-wrap: wrap;">
+                            <button class="btn-submit" onclick="pingAllNodes()" style="background:#32ade6; padding: 10px 14px; font-size: 13px;">⚡ 全局测速</button>
+                            <button id="btnPurge" class="btn-submit" onclick="purgeCache()" style="background:#ff2d55; padding: 10px 14px; font-size: 13px;">🧹 刷新全站海报</button>
+                            <input type="text" id="searchNode" class="search-input" placeholder="🔍 搜索备注或后缀查找..." onkeyup="filterNodesList()">
+                        </div>
+                    </div>
+                    <div style="background: rgba(0, 122, 255, 0.05); padding: 12px 20px; border-radius: 12px; border: 1px dashed var(--primary); margin-bottom: 20px; margin-top: 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                        <label style="cursor: pointer; font-weight: bold; display: flex; align-items: center; gap: 6px;">
+                            <input type="checkbox" id="selectAllNodes" onchange="toggleSelectAllNodes(this)" style="width: 18px; height: 18px; accent-color: var(--primary);"> 
+                            全选节点
+                        </label>
+                        
+                        <div style="width: 2px; height: 20px; background: var(--border);"></div> <select id="batch-mode-select" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-weight: 600;">
+                            <option value="">🔄 读取模式中...</option>
+                        </select>
+
+                        <button onclick="batchUpdateModes()" style="background: var(--primary); color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,113,227,0.2);">
+                            🚀 批量应用模式
+                        </button>
+
+                        <span id="batch-status" style="font-size: 13px; font-weight: 600;"></span>
+                    </div>
+                    <div id="list-grid" class="node-grid">
+                        <div style="text-align:center; color:var(--text-sec); grid-column: 1 / -1; padding: 40px;">读取数据中...</div>
+                    </div>
+                </div>
             </div>
 
             <div id="tab-dns" class="tab-panel">
@@ -600,7 +615,7 @@ const HTML_UI = `
                 return val;
             }
 
-            let top5Html = '<div class="dashboard-top5-header"><h3 style="margin:0;">🏆 今日节点流量消耗 TOP 5</h3>';
+            let top5Html = '<div class="dashboard-top5-card"><div class="dashboard-top5-header"><h4 style="margin:0;">🏆 今日节点流量消耗 TOP 5</h4>';
 
             const routesReady = Array.isArray(window.globalRoutesData);
             const nodes = routesReady ? window.globalRoutesData : [];
@@ -625,13 +640,13 @@ const HTML_UI = `
                 top5Html += '<div class="dashboard-top5-loading"><span class="dashboard-top5-spinner">🔄</span><span>正在读取节点列表</span></div>';
             }
 
-            top5Html += '</div><div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">';
+            top5Html += '</div><div class="dashboard-top5-body" style="background: rgba(120,120,120,0.05); padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 0;">';
 
             if (validNodes.length > 0) {
-                top5Html += '<ul style="margin:0; padding-left: 20px; line-height: 2; font-size: 14px; color: var(--text);">';
+                top5Html += '<ul style="margin:0; padding-left: 20px; font-size: 13px; color: var(--text); height: 100%; display: flex; flex-direction: column; gap: 0;">';
                 validNodes.forEach((r, idx) => {
                     const rankColor = idx === 0 ? '#ff3b30' : (idx === 1 ? '#ff9500' : (idx === 2 ? '#ffcc00' : 'var(--text-sec)'));
-                    top5Html += '<li><strong style="color:' + rankColor + '; font-size: 15px;">#' + (idx + 1) + '</strong> ' + r.remark + ' (/' + r.prefix + ') —— 消耗: <strong style="color:var(--primary); font-family: monospace;">' + r.todayBandwidth + '</strong></li>';
+                    top5Html += '<li style="flex: 1; display: flex; align-items: center;"><strong style="color:' + rankColor + '; font-size: 15px;">#' + (idx + 1) + '</strong>&nbsp;' + r.remark + ' (/' + r.prefix + ') —— 消耗: <strong style="color:var(--primary); font-family: monospace;">' + r.todayBandwidth + '</strong></li>';
                 });
                 top5Html += '</ul>';
             } else if (showRouteLoading || hasPendingNodes) {
@@ -641,8 +656,25 @@ const HTML_UI = `
             } else {
                 top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">主页暂无节点卡片</div>';
             }
-            top5Html += '</div>';
+            top5Html += '</div></div>';
             top5Container.innerHTML = top5Html;
+            syncDashboardFirstRowHeights();
+        }
+
+        function syncDashboardFirstRowHeights() {
+            const cards = Array.from(document.querySelectorAll('#tab-dashboard .dashboard-first-row-card'));
+            if (cards.length < 2) return;
+
+            cards.forEach(card => {
+                card.style.minHeight = '';
+            });
+
+            if (window.innerWidth <= 768) return;
+
+            const maxHeight = Math.max(...cards.map(card => card.offsetHeight));
+            cards.forEach(card => {
+                card.style.minHeight = maxHeight + 'px';
+            });
         }
 
         // =====================================
@@ -660,6 +692,7 @@ const HTML_UI = `
             }
 
             renderDashboardTop5();
+            syncDashboardFirstRowHeights();
 
 
             // ==========================================
@@ -741,6 +774,8 @@ const HTML_UI = `
                 const errMsg = e.name === 'AbortError' ? '网络超时，CF 接口拥堵，请稍后重试' : e.message;
                 document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="7" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
             }
+
+            syncDashboardFirstRowHeights();
         }
 
         async function loadIcons(forceUrl = null) {
@@ -825,6 +860,8 @@ const HTML_UI = `
                 if (!panel.contains(e.target) && !btn.contains(e.target)) panel.style.display = 'none';
             }
         });
+
+        window.addEventListener('resize', syncDashboardFirstRowHeights);
 
         function toggleDarkMode() {
             const isDark = document.body.classList.toggle('dark');
