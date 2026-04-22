@@ -1,6 +1,6 @@
-// VERSION: 2.2.3
+// VERSION: 2.3.0
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.2.3";
+const CURRENT_VERSION = "2.3.0";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -183,10 +183,9 @@ const CSS_COMMON = `
         }
         .watch-mobile-detail * { pointer-events: auto; }
         
-        #dashboardModal { padding: 10px !important; }
-        #dashboardModal .card { margin: 10px auto !important; padding: 16px !important; box-sizing: border-box; }
-        #dashboardModal h2 { font-size: 18px; flex-direction: column; align-items: flex-start; }
-        #dashboardModal h2 span { font-size: 12px; }
+        #tab-dashboard .card { padding: 16px !important; box-sizing: border-box; }
+        #tab-dashboard h2 { font-size: 18px; flex-direction: column; align-items: flex-start; }
+        #tab-dashboard h2 span { font-size: 12px; }
     }
 `;
 
@@ -247,40 +246,6 @@ const HTML_UI = `
 <body>
     <div id="toast"></div>
     
-    <div id="dashboardModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; overflow-y:auto; padding: 20px; backdrop-filter: blur(5px);">
-        <div class="card" style="max-width: 90%; margin: 40px auto; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-            
-            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-right:56px; margin-bottom:10px;">
-                <h2 style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    <span>📊 数据大屏</span><span style="font-size:14px; font-weight: normal; color: var(--text-sec);">精确访客画像分析</span>
-                </h2>
-                <button onclick="closeDashboard()" style="position:absolute; top:20px; right:20px; font-size:24px; background:none; border:none; cursor:pointer; color: var(--text-sec); transition: 0.2s;" onmouseover="this.style.color='#ff3b30'" onmouseout="this.style.color='var(--text-sec)'">✖</button>
-            </div>
-            <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap; width: 100%; max-width: 100%; margin-bottom: 20px;">
-                <span> 今天: <strong id="trafficToday">加载中...</strong></span>
-                <span>1周内: <strong id="traffic7d">加载中...</strong></span>
-                <span>1月内: <strong id="traffic30d">加载中...</strong></span>
-            </div>
-            <div id="dashboard-top5-anchor"></div>
-            
-            <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
-            <div class="table-wrapper">
-                <table class="dashboard-log-table" style="width: 100%;">
-                    <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
-                    <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
-                </table>
-            </div>
-            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top:30px; align-items: stretch;">
-                <div style="flex: 2 1 520px; min-width: min(100%, 520px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
-                    <canvas id="trendChart"></canvas>
-                </div>
-                <div style="flex: 1 1 260px; min-width: min(100%, 260px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; justify-content: center; align-items: center;">
-                    <canvas id="locationChart"></canvas>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="container">
     <div id="updateAlert" class="card" style="display: none; border-left: 4px solid #34c759; background-color: rgba(52, 199, 89, 0.05); margin-top: 20px;">
             <div style="display:flex; justify-content: space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -289,22 +254,6 @@ const HTML_UI = `
                     <p style="margin: 5px 0 0 0; font-size: 13px; color: var(--text-sec);" id="updateMsg">当前版本: v1.0.0 | 最新版本: v?.?.?</p>
                 </div>
                 <button onclick="doOnlineUpdate()" id="onlineUpdateBtn" style="background: #34c759; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);">🚀 一键拉取并升级</button>
-            </div>
-        </div>
-    <div id="cf-trace-card" style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; font-size: 14px; gap: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); margin-top: 20px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="font-size: 24px;">📍</div>
-                <div>
-                    <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">访客入口 (地区与机房)</div>
-                    <div id="trace-entry" style="font-weight:600; color:var(--text); font-family: monospace; font-size: 15px;">雷达扫描中...</div>
-                </div>
-            </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="font-size: 24px;">🚀</div>
-                <div>
-                    <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">Worker 实际落地机房</div>
-                    <div id="trace-egress" style="font-weight:600; color:#34c759; font-family: monospace; font-size: 15px;">雷达扫描中...</div>
-                </div>
             </div>
         </div>
         <div class="content-wrap">
@@ -319,12 +268,12 @@ const HTML_UI = `
                         <span style="color: var(--text-sec);">RTT: </span><span id="rttValue" style="font-family: monospace; font-size: 14px; width: 50px; text-align: right;">测算中</span>
                     </div>
                     
-                    <button class="btn-submit" onclick="openDashboard()" style="background: #34c759; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);">📊 数据大屏</button>
                     <button class="logout-btn" style="background: #ff3b30; color: white; border: none; border-radius: 10px; font-weight: 600; padding: 10px 16px; cursor: pointer;" onclick="logout()">退出系统</button>
                 </div>
             </div>
             <div class="tabs-nav">
                 <button type="button" class="tab-btn active" data-tab="watch" onclick="switchTab('watch', this)"><span class="tab-emoji">🛡️</span><span class="tab-text">保号</span></button>
+                <button type="button" class="tab-btn" data-tab="dashboard" onclick="switchTab('dashboard', this)"><span class="tab-emoji">📊</span><span class="tab-text">大屏</span></button>
                 <button type="button" class="tab-btn" data-tab="proxy" onclick="switchTab('proxy', this)"><span class="tab-emoji">🔁</span><span class="tab-text">反代</span></button>
                 <button type="button" class="tab-btn" data-tab="dns" onclick="switchTab('dns', this)"><span class="tab-emoji">🌐</span><span class="tab-text">DNS</span></button>
                 <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)"><span class="tab-emoji">⚙️</span><span class="tab-text">设置</span></button>
@@ -354,6 +303,54 @@ const HTML_UI = `
                                 <tr><td colspan="6" style="text-align:center; color:var(--text-sec); padding: 20px;">读取数据中...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-dashboard" class="tab-panel">
+                <div class="card" style="position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.08);">
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px;">
+                        <h2 style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <span>📊 数据大屏</span><span style="font-size:14px; font-weight: normal; color: var(--text-sec);">精确访客画像分析</span>
+                        </h2>
+                    </div>
+                    <div id="cf-trace-card" style="background: rgba(120,120,120,0.05); padding: 15px 20px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; font-size: 14px; gap: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="font-size: 24px;">📍</div>
+                            <div>
+                                <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">访客入口 (地区与机房)</div>
+                                <div id="trace-entry" style="font-weight:600; color:var(--text); font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="font-size: 24px;">🚀</div>
+                            <div>
+                                <div style="color:var(--text-sec); font-size: 12px; margin-bottom: 2px;">Worker 实际落地机房</div>
+                                <div id="trace-egress" style="font-weight:600; color:#34c759; font-family: monospace; font-size: 15px;">雷达扫描中...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap; width: 100%; max-width: 100%; margin-bottom: 20px;">
+                        <span> 今天: <strong id="trafficToday">加载中...</strong></span>
+                        <span>1周内: <strong id="traffic7d">加载中...</strong></span>
+                        <span>1月内: <strong id="traffic30d">加载中...</strong></span>
+                    </div>
+                    <div id="dashboard-top5-anchor"></div>
+                    
+                    <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
+                    <div class="table-wrapper">
+                        <table class="dashboard-log-table" style="width: 100%;">
+                            <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
+                            <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top:30px; align-items: stretch;">
+                        <div style="flex: 2 1 520px; min-width: min(100%, 520px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                        <div style="flex: 1 1 260px; min-width: min(100%, 260px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; justify-content: center; align-items: center;">
+                            <canvas id="locationChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -652,8 +649,6 @@ const HTML_UI = `
         // 数据大屏与统计逻辑 (适配手机端表格排版)
         // =====================================
         async function openDashboard() {
-            document.getElementById('dashboardModal').style.display = 'block';
-
             let top5Container = document.getElementById('top5-simple-container');
             if (!top5Container) {
                 top5Container = document.createElement('div');
@@ -747,8 +742,6 @@ const HTML_UI = `
                 document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="7" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
             }
         }
-
-        function closeDashboard() { document.getElementById('dashboardModal').style.display = 'none'; }
 
         async function loadIcons(forceUrl = null) {
             const grid = document.getElementById('iconGrid');
@@ -856,6 +849,9 @@ const HTML_UI = `
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.toggle('active', btn === triggerEl);
             });
+            if (tabName === 'dashboard') {
+                openDashboard();
+            }
         }
 
         // 作用：请求后端清理 Cloudflare 全站缓存。
