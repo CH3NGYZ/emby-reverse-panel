@@ -257,6 +257,7 @@ const HTML_UI = `
                 <span>1周内: <strong id="traffic7d">加载中...</strong></span>
                 <span>1月内: <strong id="traffic30d">加载中...</strong></span>
             </div>
+            <div id="dashboard-top5-anchor"></div>
             
             <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
             <div class="table-wrapper">
@@ -641,9 +642,9 @@ const HTML_UI = `
             if (!top5Container) {
                 top5Container = document.createElement('div');
                 top5Container.id = 'top5-simple-container';
-                const wrapper = document.querySelector('.table-wrapper');
-                if (wrapper && wrapper.previousElementSibling) {
-                    wrapper.parentNode.insertBefore(top5Container, wrapper.previousElementSibling);
+                const anchor = document.getElementById('dashboard-top5-anchor');
+                if (anchor) {
+                    anchor.replaceWith(top5Container);
                 }
             }
 
@@ -1254,21 +1255,23 @@ function renderWatchReportPanel(routes) {
         // 作用：按节点单独拉取今日带宽并回填卡片。
         // 目的：避免主列表接口过重，同时让流量信息渐进式展示。
         async function loadSingleRouteBandwidth(prefix) {
+            let todayBandwidth = '获取异常';
             try {
                 const res = await fetch('/api/routes/bandwidth?prefix=' + encodeURIComponent(prefix));
-                if (!res.ok) return;
-                const data = await res.json();
-                const todayBandwidth = data && data.todayBandwidth ? data.todayBandwidth : '0 B';
-
-                if (Array.isArray(window.globalRoutesData)) {
-                    const route = window.globalRoutesData.find(item => item.prefix === prefix);
-                    if (route) route.todayBandwidth = todayBandwidth;
+                if (res.ok) {
+                    const data = await res.json();
+                    todayBandwidth = data && data.todayBandwidth ? data.todayBandwidth : '0 B';
                 }
-
-                const el = document.getElementById('bandwidth-' + prefix);
-                if (el) el.textContent = todayBandwidth;
-                renderDashboardTop5();
             } catch (e) {}
+
+            if (Array.isArray(window.globalRoutesData)) {
+                const route = window.globalRoutesData.find(item => item.prefix === prefix);
+                if (route) route.todayBandwidth = todayBandwidth;
+            }
+
+            const el = document.getElementById('bandwidth-' + prefix);
+            if (el) el.textContent = todayBandwidth;
+            renderDashboardTop5();
         }
 
         // 作用：批量调度多个节点的带宽补写请求。
