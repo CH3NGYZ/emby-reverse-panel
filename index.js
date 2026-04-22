@@ -1,6 +1,6 @@
-// VERSION: 2.2.1
+// VERSION: 2.2.2
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.2.1";
+const CURRENT_VERSION = "2.2.2";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -62,6 +62,8 @@ const CSS_COMMON = `
     .icon-btn svg { width: 15px; height: 15px; fill: currentColor; }
     
     .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .dashboard-log-table th, .dashboard-log-table td { padding: 10px; }
+    .dashboard-log-location-badge { display: inline-block; width: fit-content; max-width: 100%; min-width: 0; margin-left: auto; text-align: left; white-space: normal; word-break: break-word; overflow-wrap: anywhere; line-height: 1.4; }
     
     .btn-edit { padding: 8px 14px; background: var(--card); color: var(--primary); border: 1px solid var(--primary); border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
     .btn-del { padding: 8px 14px; background: var(--card); color: #ff3b30; border: 1px solid #ff3b30; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
@@ -243,34 +245,33 @@ const HTML_UI = `
     
     <div id="dashboardModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:10000; overflow-y:auto; padding: 20px; backdrop-filter: blur(5px);">
         <div class="card" style="max-width: 90%; margin: 40px auto; position:relative; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-            <button onclick="closeDashboard()" style="position:absolute; top:20px; right:20px; font-size:24px; background:none; border:none; cursor:pointer; color: var(--text-sec); transition: 0.2s;" onmouseover="this.style.color='#ff3b30'" onmouseout="this.style.color='var(--text-sec)'">✖</button>
             
-            <h2 style="margin-top:0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    📊 数据大屏 <span style="font-size:14px; font-weight: normal; color: var(--text-sec);">精确访客画像分析</span>
-                </div>
-                <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap;">
-                    <span> 今天: <strong id="trafficToday">加载中...</strong></span>
-                    <span>1周内: <strong id="traffic7d">加载中...</strong></span>
-                    <span>1月内: <strong id="traffic30d">加载中...</strong></span>
-                </div>
-            </h2>
-            
-            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top:20px;">
-                <div style="flex: 2; min-width: 300px; border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
-                    <canvas id="trendChart"></canvas>
-                </div>
-                <div style="flex: 1; min-width: 300px; border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; justify-content: center; align-items: center;">
-                    <canvas id="locationChart"></canvas>
-                </div>
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding-right:56px; margin-bottom:10px;">
+                <h2 style="margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <span>📊 数据大屏</span><span style="font-size:14px; font-weight: normal; color: var(--text-sec);">精确访客画像分析</span>
+                </h2>
+                <button onclick="closeDashboard()" style="position:absolute; top:20px; right:20px; font-size:24px; background:none; border:none; cursor:pointer; color: var(--text-sec); transition: 0.2s;" onmouseover="this.style.color='#ff3b30'" onmouseout="this.style.color='var(--text-sec)'">✖</button>
+            </div>
+            <div style="font-size: 13px; background: rgba(0,113,227,0.1); color: var(--primary); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(0,113,227,0.2); display: flex; gap: 15px; flex-wrap: wrap; width: 100%; max-width: 100%; margin-bottom: 20px;">
+                <span> 今天: <strong id="trafficToday">加载中...</strong></span>
+                <span>1周内: <strong id="traffic7d">加载中...</strong></span>
+                <span>1月内: <strong id="traffic30d">加载中...</strong></span>
             </div>
             
             <h3 style="margin-top: 30px; margin-bottom:16px;">🕵️ 最新独立播放记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
             <div class="table-wrapper">
-                <table style="width: 100%;">
+                <table class="dashboard-log-table" style="width: 100%;">
                     <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
                     <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
                 </table>
+            </div>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top:30px; align-items: stretch;">
+                <div style="flex: 2 1 520px; min-width: min(100%, 520px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03);">
+                    <canvas id="trendChart"></canvas>
+                </div>
+                <div style="flex: 1 1 260px; min-width: min(100%, 260px); border: 1px solid var(--border); border-radius: 14px; padding: 16px; background: rgba(120,120,120,0.03); display: flex; justify-content: center; align-items: center;">
+                    <canvas id="locationChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -310,7 +311,7 @@ const HTML_UI = `
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap: wrap;">
                     <div style="font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: 10px; background: rgba(120,120,120,0.08); border: 1px solid var(--border); display: flex; align-items: center; gap: 8px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);" title="你的设备到云端边缘节点的真实往返延迟">
                         <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#34c759; box-shadow: 0 0 6px #34c759; transition: 0.3s;" id="rttDot"></span>
-                        <span style="color: var(--text-sec);">RTT: </span><span id="rttValue" style="font-family: monospace; font-size: 14px; width: 45px; text-align: right;">测算中</span>
+                        <span style="color: var(--text-sec);">RTT: </span><span id="rttValue" style="font-family: monospace; font-size: 14px; width: 50px; text-align: right;">测算中</span>
                     </div>
                     
                     <button class="btn-submit" onclick="openDashboard()" style="background: #34c759; box-shadow: 0 4px 12px rgba(52, 199, 89, 0.2);">📊 数据大屏</button>
@@ -575,20 +576,19 @@ const HTML_UI = `
         let trendChartInstance = null;
         let locationChartInstance = null;
 
+
         // 设置 Chart.js 响应暗色模式
         function updateChartColors() {
             Chart.defaults.color = document.body.classList.contains('dark') ? '#98989d' : '#86868b';
             Chart.defaults.borderColor = document.body.classList.contains('dark') ? '#38383a' : '#d2d2d7';
         }
 
-        // =====================================
-        // 数据大屏与统计逻辑 (适配手机端表格排版)
-        // =====================================
-        async function openDashboard() {
-            document.getElementById('dashboardModal').style.display = 'block';
-            
+        function renderDashboardTop5() {
+            const top5Container = document.getElementById('top5-simple-container');
+            if (!top5Container) return;
+
             function parseTrafficToBytes(str) {
-                if (!str || str === '0 B' || str.includes('异常') || str.includes('获取')) return 0;
+                if (!str || str === '0 B' || str.includes('异常') || str.includes('获取') || str.includes('加载')) return 0;
                 let val = parseFloat(str);
                 if (str.includes('TB')) return val * 1099511627776;
                 if (str.includes('GB')) return val * 1073741824;
@@ -597,68 +597,57 @@ const HTML_UI = `
                 return val;
             }
 
+            let top5Html = '<h3 style="margin-top: 30px; margin-bottom:16px;">🏆 今日节点流量消耗 TOP 5</h3><div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">';
+
+            const nodes = Array.isArray(window.globalRoutesData) ? window.globalRoutesData : [];
+            const visibleNodes = nodes.map(r => ({
+                prefix: r.prefix || '未知',
+                remark: r.remark || r.prefix || '未知',
+                todayBandwidth: r.todayBandwidth || '加载中...'
+            }));
+            const hasPendingNodes = visibleNodes.some(r => (r.todayBandwidth || '').includes('加载'));
+
+            const validNodes = visibleNodes
+                .filter(r => parseTrafficToBytes(r.todayBandwidth) > 0)
+                .sort((a, b) => parseTrafficToBytes(b.todayBandwidth) - parseTrafficToBytes(a.todayBandwidth))
+                .slice(0, 5);
+
+            if (validNodes.length > 0) {
+                top5Html += '<ul style="margin:0; padding-left: 20px; line-height: 2; font-size: 14px; color: var(--text);">';
+                validNodes.forEach((r, idx) => {
+                    const rankColor = idx === 0 ? '#ff3b30' : (idx === 1 ? '#ff9500' : (idx === 2 ? '#ffcc00' : 'var(--text-sec)'));
+                    top5Html += '<li><strong style="color:' + rankColor + '; font-size: 15px;">#' + (idx + 1) + '</strong> ' + r.remark + ' (/' + r.prefix + ') —— 消耗: <strong style="color:var(--primary); font-family: monospace;">' + r.todayBandwidth + '</strong></li>';
+                });
+                top5Html += '</ul>';
+            } else if (hasPendingNodes) {
+                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">正在抓取数据，请稍候...</div>';
+            } else if (visibleNodes.length > 0) {
+                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">今日暂无节点产生流量</div>';
+            } else {
+                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">主页暂无节点卡片</div>';
+            }
+
+            top5Html += '</div>';
+            top5Container.innerHTML = top5Html;
+        }
+
+        // =====================================
+        // 数据大屏与统计逻辑 (适配手机端表格排版)
+        // =====================================
+        async function openDashboard() {
+            document.getElementById('dashboardModal').style.display = 'block';
+
             let top5Container = document.getElementById('top5-simple-container');
             if (!top5Container) {
                 top5Container = document.createElement('div');
                 top5Container.id = 'top5-simple-container';
                 const wrapper = document.querySelector('.table-wrapper');
-                if(wrapper && wrapper.previousElementSibling) {
+                if (wrapper && wrapper.previousElementSibling) {
                     wrapper.parentNode.insertBefore(top5Container, wrapper.previousElementSibling);
                 }
             }
-            
-            let top5Html = '<h3 style="margin-top: 30px; margin-bottom:16px;">🏆 今日节点流量消耗 TOP 5</h3><div style="background: rgba(120,120,120,0.05); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">';
-            
-            // ==========================================
-            // 🚀 核心优化：听你的天才思路！直接去网页现有的卡片里“抓取”数据，绝不等待变量！
-            // ==========================================
-            const domCards = document.querySelectorAll('.route-item');
-            let scrapedNodes = [];
-            
-            domCards.forEach(card => {
-                const prefix = card.getAttribute('data-prefix') || '未知';
-                let remark = prefix;
-                const searchAttr = card.getAttribute('data-search');
-                if (searchAttr) {
-                    remark = searchAttr.replace(new RegExp(' ' + prefix + '$'), '').trim();
-                }
 
-                let bandwidth = '0 B';
-                // 遍历卡片里所有的文本，找出带有流量单位的那个文本
-                const spans = card.querySelectorAll('span');
-                spans.forEach(span => {
-                    const txt = span.innerText || '';
-                    // 匹配例如: 1.5 GB, 500 MB, 0 B (双斜杠防转义丢失)
-                    if (/^[\\d\\.]+\\s*(TB|GB|MB|KB|B)$/i.test(txt.trim())) {
-                        bandwidth = txt.trim();
-                    }
-                });
-
-                scrapedNodes.push({ prefix: prefix, remark: remark, todayBandwidth: bandwidth });
-            });
-
-            // 用抓取下来的真实数据直接计算 TOP 5
-            if (scrapedNodes.length > 0) {
-                const validNodes = scrapedNodes.filter(r => parseTrafficToBytes(r.todayBandwidth) > 0);
-                const top5 = validNodes.sort((a, b) => parseTrafficToBytes(b.todayBandwidth) - parseTrafficToBytes(a.todayBandwidth)).slice(0, 5);
-                
-                if (top5.length > 0) {
-                    top5Html += '<ul style="margin:0; padding-left: 20px; line-height: 2; font-size: 14px; color: var(--text);">';
-                    top5.forEach((r, idx) => {
-                        const rankColor = idx === 0 ? '#ff3b30' : (idx === 1 ? '#ff9500' : (idx === 2 ? '#ffcc00' : 'var(--text-sec)'));
-                        top5Html += \`<li><strong style="color:\${rankColor}; font-size: 15px;">#\${idx+1}</strong> \${r.remark} (/\${r.prefix}) —— 消耗: <strong style="color:var(--primary); font-family: monospace;">\${r.todayBandwidth}</strong></li>\`;
-                    });
-                    top5Html += '</ul>';
-                } else {
-                    top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">今日暂无节点产生流量</div>';
-                }
-            } else {
-                top5Html += '<div style="color:var(--text-sec); font-size:13px; text-align:center;">主页暂无节点卡片</div>';
-            }
-            top5Html += '</div>';
-            
-            // 瞬间把 TOP 5 写入网页！
-            top5Container.innerHTML = top5Html;
+            renderDashboardTop5();
 
 
             // ==========================================
@@ -729,7 +718,7 @@ const HTML_UI = `
                             <td data-label="播放视频" style="font-size:12px; color:var(--text); word-break:break-word; white-space:normal; line-height:1.4;">\${log.item_name || '未识别视频名'}</td>
                             <td data-label="观看时长" style="font-size:12px; color:var(--text); white-space:nowrap;">\${watchDuration}</td>
                             <td data-label="真实 IP" style="font-family:monospace; font-size:13px; color:var(--text-sec); word-break:break-all;">\${log.ip}</td>
-                            <td data-label="归属地"><span class="badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayLocation}</span></td>
+                            <td data-label="归属地"><span class="badge dashboard-log-location-badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayLocation}</span></td>
                             <td data-label="设备标识 (UA)" style="font-size:12px; color:var(--text-sec); word-break: break-all; white-space: normal; text-align: right; line-height: 1.4;" title="\${log.ua}">\${log.ua}</td>
                         \`;
                         tbody.appendChild(tr);
@@ -1278,6 +1267,7 @@ function renderWatchReportPanel(routes) {
 
                 const el = document.getElementById('bandwidth-' + prefix);
                 if (el) el.textContent = todayBandwidth;
+                renderDashboardTop5();
             } catch (e) {}
         }
 
@@ -1286,7 +1276,9 @@ function renderWatchReportPanel(routes) {
         function loadRouteBandwidth(prefixes) {
             if (!Array.isArray(prefixes) || prefixes.length === 0) return;
             prefixes.forEach((prefix, index) => {
-                setTimeout(() => loadSingleRouteBandwidth(prefix), index * 120);
+                setTimeout(() => {
+                    loadSingleRouteBandwidth(prefix);
+                }, index * 120);
             });
         }
 
