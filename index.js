@@ -1,6 +1,6 @@
-// VERSION: 2.3.0
+// VERSION: 2.3.1
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.0";
+const CURRENT_VERSION = "2.3.1";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -2657,11 +2657,210 @@ function buildPlaybackItemRefStmt(env, prefix, itemId, itemName, nowTime) {
         .bind(prefix, itemId, itemName, nowTime);
 }
 
+const BEIJING_OFFSET_MS = 8 * 3600000;
+const WATCH_ALERT_THRESHOLD_MS = 24 * 3600000;
+const TG_MESSAGE_LIMIT = 4096;
+
+// 作用：确保定时任务需要读取的表和字段存在。
+// 目的：避免首次部署后还没打开面板时，TG 日报因为缺少表结构直接失败。
+async function ensureTgReportSchema(env) {
+    if (!env?.DB) return;
+    await env.DB.exec(`CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL)`);
+    await env.DB.exec(`CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id))`);
+    await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
+    try {
+        await env.DB.exec(`ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`);
+    } catch (e) {}
+    try {
+        await env.DB.exec(`ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`);
+    } catch (e) {}
+    try {
+        await env.DB.exec(`ALTER TABLE routes ADD COLUMN watch_report INTEGER DEFAULT 0`);
+    } catch (e) {}
+    try {
+        await env.DB.exec(`ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`);
+    } catch (e) {}
+}
+
+// 作用：限制 TG 单条消息长度。
+// 目的：节点较多时仍能稳定发送日报，不被 Telegram 4096 字符限制拦截。
+function limitTgText(text) {
+    const rawText = String(text || '');
+    if (rawText.length <= TG_MESSAGE_LIMIT) return rawText;
+    const suffix = '\n\n内容过长，后续节点已截断，请登录面板查看完整保号列表。';
+    return rawText.slice(0, TG_MESSAGE_LIMIT - suffix.length) + suffix;
+}
+
+// 作用：发送纯文本 TG 消息。
+// 目的：避免节点前缀里的下划线、横线等字符破坏 Markdown 解析。
+async function sendTgText(env, chatId, text) {
+    if (!env.TG_BOT_TOKEN || !chatId) return null;
+    const tgRes = await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text: limitTgText(text),
+            disable_web_page_preview: true
+        })
+    });
+    const tgData = await tgRes.json().catch(() => null);
+    if (!tgRes.ok || tgData?.ok === false) {
+        console.error("TG 消息发送失败:", tgData?.description || tgRes.status);
+    }
+    return tgData;
+}
+
+function parsePositiveDays(value) {
+    const days = parseInt(value, 10);
+    return Number.isFinite(days) && days > 0 ? days : 0;
+}
+
+function parseBeijingDateTimeMs(dateTimeStr) {
+    const rawText = String(dateTimeStr || '').trim();
+    if (!rawText) return NaN;
+    const normalized = rawText.replace(' ', 'T');
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+    const parsedMs = Date.parse(hasTimezone ? normalized : `${normalized}+08:00`);
+    return Number.isFinite(parsedMs) ? parsedMs : NaN;
+}
+
+function formatBeijingDateTime(timeMs) {
+    if (!Number.isFinite(timeMs)) return '-';
+    const bjTime = new Date(timeMs + BEIJING_OFFSET_MS);
+    const year = bjTime.getUTCFullYear();
+    const month = String(bjTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(bjTime.getUTCDate()).padStart(2, '0');
+    const hours = String(bjTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(bjTime.getUTCMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+function formatDurationShort(diffMs) {
+    const totalMinutes = Math.max(Math.ceil(Math.abs(diffMs) / 60000), 0);
+    if (totalMinutes <= 0) return '不足 1 分钟';
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+    if (days > 0) parts.push(`${days}天`);
+    if (hours > 0) parts.push(`${hours}小时`);
+    if (days === 0 && minutes > 0) parts.push(`${minutes}分钟`);
+    return parts.length > 0 ? parts.join(' ') : '不足 1 小时';
+}
+
+function getNextWatchCheckMs(route) {
+    const reportDays = parsePositiveDays(route.watch_report);
+    if (reportDays === 0) return null;
+    const lastPlayMs = parseBeijingDateTimeMs(route.last_play);
+    if (!Number.isFinite(lastPlayMs)) return NaN;
+    const bjLastPlay = new Date(lastPlayMs + BEIJING_OFFSET_MS);
+    const nextMidnightUtcMs = Date.UTC(
+        bjLastPlay.getUTCFullYear(),
+        bjLastPlay.getUTCMonth(),
+        bjLastPlay.getUTCDate() + 1,
+        0,
+        0,
+        0
+    ) - BEIJING_OFFSET_MS;
+    return nextMidnightUtcMs + Math.max(reportDays - 1, 0) * 86400000;
+}
+
+function getRouteDisplayName(route) {
+    return String(route.remark || route.prefix || '未命名节点').trim();
+}
+
+// 作用：生成保号小于 24 小时的 TG 提醒文本。
+// 目的：把即将到期、已经到期、未记录首播的节点集中推给管理员。
+async function buildTgWatchReport(env) {
+    await ensureTgReportSchema(env);
+    const {
+        results: routes = []
+    } = await env.DB.prepare(`
+        SELECT prefix, remark, last_play, watch_report
+        FROM routes
+        WHERE IFNULL(watch_report, 0) > 0
+        ORDER BY sort_order ASC, prefix ASC
+    `).all();
+
+    const nowMs = Date.now();
+    const urgentRoutes = [];
+    const noPlayRoutes = [];
+
+    for (const route of routes || []) {
+        const reportDays = parsePositiveDays(route.watch_report);
+        if (reportDays === 0) continue;
+        const nextCheckMs = getNextWatchCheckMs(route);
+        if (!Number.isFinite(nextCheckMs)) {
+            noPlayRoutes.push({
+                ...route,
+                reportDays
+            });
+            continue;
+        }
+        const diffMs = nextCheckMs - nowMs;
+        if (diffMs <= WATCH_ALERT_THRESHOLD_MS) {
+            urgentRoutes.push({
+                ...route,
+                reportDays,
+                nextCheckMs,
+                diffMs
+            });
+        }
+    }
+
+    urgentRoutes.sort((a, b) => a.nextCheckMs - b.nextCheckMs);
+
+    const lines = [
+        '🛡️ 保号小于 24 小时提醒',
+        `统计时间: ${formatBeijingDateTime(nowMs)} (北京时间)`,
+        `已设置保号节点: ${routes.length} 个`,
+        `24 小时内或已到期: ${urgentRoutes.length} 个`,
+        `未记录首播: ${noPlayRoutes.length} 个`
+    ];
+
+    if (urgentRoutes.length > 0) {
+        lines.push('', '需要尽快观看的节点:');
+        urgentRoutes.slice(0, 20).forEach((route, index) => {
+            const prefixText = route.prefix ? `/${route.prefix}` : '';
+            const remainText = route.diffMs <= 0 ? `已到期 ${formatDurationShort(route.diffMs)}` : `剩余 ${formatDurationShort(route.diffMs)}`;
+            lines.push(`${index + 1}. ${getRouteDisplayName(route)} ${prefixText}`);
+            lines.push(`   ${remainText}，检测时间 ${formatBeijingDateTime(route.nextCheckMs)}，要求 ${route.reportDays} 天`);
+        });
+        if (urgentRoutes.length > 20) {
+            lines.push(`还有 ${urgentRoutes.length - 20} 个节点未展示，请登录面板查看完整列表。`);
+        }
+    } else {
+        lines.push('', '暂无 24 小时内到期的保号节点。');
+    }
+
+    if (noPlayRoutes.length > 0) {
+        lines.push('', '未记录观看的保号节点:');
+        noPlayRoutes.slice(0, 10).forEach((route, index) => {
+            const prefixText = route.prefix ? `/${route.prefix}` : '';
+            lines.push(`${index + 1}. ${getRouteDisplayName(route)} ${prefixText}，要求 ${route.reportDays} 天`);
+        });
+        if (noPlayRoutes.length > 10) {
+            lines.push(`还有 ${noPlayRoutes.length - 10} 个未记录首播节点未展示。`);
+        }
+    }
+
+    return lines.join('\n');
+}
+
+function getTgCommand(text) {
+    const firstToken = String(text || '').trim().split(/\s+/)[0].toLowerCase();
+    return firstToken.replace(/@\w+$/, '');
+}
+
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
-// 作用：汇总今日播放、地区和流量数据并发送到 Telegram。
+// 作用：汇总今日播放、地区、流量和保号小于 24 小时的节点并发送到 Telegram。
 // 目的：让管理员无需登录面板也能定时收到核心运营数据。
 async function sendTgStats(env, chatId) {
     try {
+        await ensureTgReportSchema(env);
         const totalQuery = await env.DB.prepare(`SELECT COUNT(*) as count FROM daily_unique_plays WHERE date = date('now', '+8 hours')`).first();
         const topRegionQuery = await env.DB.prepare(`SELECT country, COUNT(*) as c FROM visitor_logs WHERE date(timestamp, '+8 hours') = date('now', '+8 hours') GROUP BY country ORDER BY c DESC LIMIT 1`).first();
         const topNodeQuery = await env.DB.prepare(`
@@ -2759,35 +2958,27 @@ async function sendTgStats(env, chatId) {
         }
         // ====================================================================
 
+        const watchReportText = await buildTgWatchReport(env);
         const totalStr = totalQuery ? totalQuery.count : 0;
         const regionStr = topRegionQuery ? `${topRegionQuery.country === 'CN' ? '🇨🇳 中国大陆' : topRegionQuery.country} (${topRegionQuery.c} 次)` : '暂无记录';
         const nodeStr = topNodeQuery ? `${topNodeQuery.remark || '未命名节点'} (${topNodeQuery.c} 次)` : '暂无记录';
 
         const msg =
-            `📊 *今日反代播放数据*\n\n` +
-            `▶️ *今日总播放次数:* ${totalStr} 次\n` +
-            `🌍 *最多访问地区:* ${regionStr}\n` +
-            `🚀 *最喜欢的EMBY:* ${nodeStr}\n\n` +
-            `🌐 *实际流量消耗:*\n` +
+            `📊 今日反代播放数据\n\n` +
+            `▶️ 今日总播放次数: ${totalStr} 次\n` +
+            `🌍 最多访问地区: ${regionStr}\n` +
+            `🚀 最喜欢的 EMBY: ${nodeStr}\n\n` +
+            `🌐 实际流量消耗:\n` +
             `当天内: ${trafficToday}\n` +
             `七天内: ${traffic7d}\n` +
             `30天内: ${traffic30d}\n\n` +
-            `🏆 *今日流量之王:*\n` +
-            `👑 ${topNodeMsg}`;
+            `🏆 今日流量之王:\n` +
+            `👑 ${topNodeMsg}\n\n` +
+            watchReportText;
 
-        await fetch(`https://api.telegram.org/bot${env.TG_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: msg,
-                parse_mode: 'Markdown'
-            })
-        });
+        await sendTgText(env, chatId, msg);
     } catch (e) {
-        console.error("TG Send Error:", e);
+        console.error("TG 日报发送失败:", e.message);
     }
 }
 
@@ -2927,9 +3118,26 @@ export default {
         if (url.pathname === '/api/tg-webhook' && request.method === 'POST') {
             try {
                 const body = await request.json();
-                if (body.message && body.message.text === '/stats') {
-                    if (env.DB && env.TG_BOT_TOKEN) {
-                        ctx.waitUntil(sendTgStats(env, body.message.chat.id));
+                if (body.message && body.message.text) {
+                    const chatId = body.message.chat.id;
+                    const command = getTgCommand(body.message.text);
+                    if (env.DB && env.TG_BOT_TOKEN && command === '/stats') {
+                        ctx.waitUntil(sendTgStats(env, chatId));
+                    } else if (env.DB && env.TG_BOT_TOKEN && command === '/watch') {
+                        ctx.waitUntil(buildTgWatchReport(env).then(text => sendTgText(env, chatId, text)));
+                    } else if (env.TG_BOT_TOKEN && command === '/traffic') {
+                        ctx.waitUntil((async () => {
+                            const [trafficToday, traffic7d, traffic30d] = await Promise.all([
+                                getCFTraffic(env, 'today'),
+                                getCFTraffic(env, 7),
+                                getCFTraffic(env, 30)
+                            ]);
+                            await sendTgText(
+                                env,
+                                chatId,
+                                `🌐 实际流量消耗\n\n当天内: ${trafficToday}\n七天内: ${traffic7d}\n30天内: ${traffic30d}`
+                            );
+                        })());
                     }
                 }
                 return new Response("OK");
