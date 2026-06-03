@@ -1,6 +1,6 @@
-// VERSION: 2.3.1
+// VERSION: 2.3.2
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.1";
+const CURRENT_VERSION = "2.3.2";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -2856,7 +2856,7 @@ function getTgCommand(text) {
 }
 
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
-// 作用：汇总今日播放、地区、流量和保号小于 24 小时的节点并发送到 Telegram。
+// 作用：先发送今日播放和流量日报，再单独发送保号提醒到 Telegram。
 // 目的：让管理员无需登录面板也能定时收到核心运营数据。
 async function sendTgStats(env, chatId) {
     try {
@@ -2958,7 +2958,6 @@ async function sendTgStats(env, chatId) {
         }
         // ====================================================================
 
-        const watchReportText = await buildTgWatchReport(env);
         const totalStr = totalQuery ? totalQuery.count : 0;
         const regionStr = topRegionQuery ? `${topRegionQuery.country === 'CN' ? '🇨🇳 中国大陆' : topRegionQuery.country} (${topRegionQuery.c} 次)` : '暂无记录';
         const nodeStr = topNodeQuery ? `${topNodeQuery.remark || '未命名节点'} (${topNodeQuery.c} 次)` : '暂无记录';
@@ -2973,10 +2972,11 @@ async function sendTgStats(env, chatId) {
             `七天内: ${traffic7d}\n` +
             `30天内: ${traffic30d}\n\n` +
             `🏆 今日流量之王:\n` +
-            `👑 ${topNodeMsg}\n\n` +
-            watchReportText;
+            `👑 ${topNodeMsg}`;
 
         await sendTgText(env, chatId, msg);
+        const watchReportText = await buildTgWatchReport(env);
+        await sendTgText(env, chatId, watchReportText);
     } catch (e) {
         console.error("TG 日报发送失败:", e.message);
     }
@@ -4167,6 +4167,9 @@ export default {
 
         let finalResponse = null;
         let lastError = null;
+        let primaryErrorResponse = null;
+        let primaryErrorTargetUrl = null;
+        let primaryError = null;
         let targetOrigins = getTargetOrigins(targetUrls);
         let finalTargetUrl = null;
 
@@ -4234,8 +4237,12 @@ export default {
             try {
                 const modifiedRequest = new Request(targetUrl, fetchInit);
                 const response = await fetch(modifiedRequest);
-                if (response.status === 502 || response.status === 503 || response.status === 504) {
+                if (response.status >= 500) {
                     lastError = new Error(`Node ${i+1} returned HTTP ${response.status}`);
+                    if (i === 0) {
+                        primaryErrorResponse = response;
+                        primaryErrorTargetUrl = targetUrl;
+                    }
                     continue;
                 }
                 finalResponse = response;
@@ -4243,11 +4250,17 @@ export default {
                 break;
             } catch (err) {
                 lastError = err;
+                if (i === 0) primaryError = err;
                 continue;
             }
         }
 
-        if (!finalResponse) return new Response("Worker Proxy Failover Exhausted. All nodes failed. Last Error: " + (lastError?.message || 'Unknown Error'), {
+        if (!finalResponse && primaryErrorResponse) {
+            finalResponse = primaryErrorResponse;
+            finalTargetUrl = primaryErrorTargetUrl;
+        }
+
+        if (!finalResponse) return new Response("Worker Proxy Failover Exhausted. All nodes failed. Primary Error: " + (primaryError?.message || lastError?.message || 'Unknown Error'), {
             status: 502
         });
 
