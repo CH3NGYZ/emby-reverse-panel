@@ -1,6 +1,6 @@
-// VERSION: 2.3.2
+// VERSION: 2.3.3
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.2";
+const CURRENT_VERSION = "2.3.3";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
