@@ -164,7 +164,7 @@ const CSS_COMMON = `
         td[colspan] { justify-content: center; text-align: center; }
         td[colspan]::before { display: none !important; }
         td::before { content: attr(data-label); font-weight: 600; color: var(--text-sec); flex-shrink: 0; margin-right: auto; text-align: left; }
-        .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="服名"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="下次检测"] { display: none; }
+        .watch-report-row td[data-label="图标"], .watch-report-row td[data-label="服名"], .watch-report-row td[data-label="上次观看"], .watch-report-row td[data-label="到期时间"] { display: none; }
         .watch-report-row td[data-label="保号天数"], .watch-report-row td[data-label="保号要求"] { display: none; }
         .watch-report-row td[data-label="倒计时"] { display: block; text-align: left; padding: 16px; }
         .watch-report-row td[data-label="倒计时"]::before { display: none; }
@@ -302,7 +302,7 @@ const HTML_UI = `
                                     <th style="width: 72px;">图标</th>
                                     <th onclick="toggleWatchReportSort('remark')" style="cursor:pointer; user-select:none;">服名</th>
                                     <th onclick="toggleWatchReportSort('last_play')" style="cursor:pointer; user-select:none;">上次观看</th>
-                                    <th onclick="toggleWatchReportSort('next_check')" style="cursor:pointer; user-select:none;">下次检测</th>
+                                    <th onclick="toggleWatchReportSort('next_check')" style="cursor:pointer; user-select:none;">到期时间</th>
                                     <th onclick="toggleWatchReportSort('watch_report')" style="cursor:pointer; user-select:none;">保号天数</th>
                                     <th onclick="toggleWatchReportSort('countdown')" style="cursor:pointer; user-select:none;">倒计时</th>
                                 </tr>
@@ -1063,7 +1063,7 @@ function getWatchReportSortValue(route, sortKey) {
     }
     if (sortKey === 'countdown') {
         const status = calcWatchReportStatus(route);
-        if (status.countdownText === '无需检测') return Number.POSITIVE_INFINITY;
+        if (status.countdownText === '无需保号') return Number.POSITIVE_INFINITY;
         if (status.countdownText === '等待首播') return Number.NEGATIVE_INFINITY;
         const nextCheckTime = getWatchReportSortValue(route, 'next_check');
         return Number.isFinite(nextCheckTime) ? nextCheckTime - Date.now() : nextCheckTime;
@@ -1094,7 +1094,7 @@ function updateWatchReportSortHeaders() {
     const sortLabels = {
         remark: '服名',
         last_play: '上次观看',
-        next_check: '下次检测',
+        next_check: '到期时间',
         watch_report: '保号天数',
         countdown: '倒计时'
     };
@@ -1152,7 +1152,7 @@ function renderWatchReportPanel(routes) {
                             <div class="watch-table-sub">/\${route.prefix}</div>
                         </td>
                         <td data-label="上次观看">\${lastPlayText}</td>
-                        <td data-label="下次检测">\${status.nextCheckText}</td>
+                        <td data-label="到期时间">\${status.nextCheckText}</td>
                         <td data-label="保号要求">
                             \${renderWatchRequirementCell(route.prefix, reportDays, reportText, desktopInputId, false)}
                         </td>
@@ -1181,7 +1181,7 @@ function renderWatchReportPanel(routes) {
                                         <span>\${lastPlayText}</span>
                                     </div>
                                     <div class="watch-mobile-detail-row">
-                                        <span class="watch-mobile-detail-label">下次检测</span>
+                                        <span class="watch-mobile-detail-label">到期时间</span>
                                         <span>\${status.nextCheckText}</span>
                                     </div>
                                 </div>
@@ -2374,6 +2374,15 @@ function renderWatchReportPanel(routes) {
 // 用于向 Cloudflare 获取对应时间段的总流量 (支持北京时间今日、近7天、近30天)
 // 作用：按指定时间范围查询 Cloudflare 流量统计。
 // 目的：为数据大屏和 Telegram 播报提供今日、7天、30天流量数据。
+function formatTrafficBytes(totalBytes) {
+    if (totalBytes === 0) return "0 B";
+    if (totalBytes >= 1099511627776) return (totalBytes / 1099511627776).toFixed(2) + " TB";
+    if (totalBytes >= 1073741824) return (totalBytes / 1073741824).toFixed(2) + " GB";
+    if (totalBytes >= 1048576) return (totalBytes / 1048576).toFixed(2) + " MB";
+    if (totalBytes >= 1024) return (totalBytes / 1024).toFixed(2) + " KB";
+    return totalBytes + " B";
+}
+
 async function getCFTraffic(env, type) {
     if (!env.CF_API_TOKEN || !env.CF_ZONE_ID) return "缺少变量";
     try {
@@ -2464,12 +2473,7 @@ async function getCFTraffic(env, type) {
             }
         }
 
-        if (totalBytes === 0) return "0 B";
-        if (totalBytes >= 1099511627776) return (totalBytes / 1099511627776).toFixed(2) + " TB";
-        if (totalBytes >= 1073741824) return (totalBytes / 1073741824).toFixed(2) + " GB";
-        if (totalBytes >= 1048576) return (totalBytes / 1048576).toFixed(2) + " MB";
-        if (totalBytes >= 1024) return (totalBytes / 1024).toFixed(2) + " KB";
-        return totalBytes + " B";
+        return formatTrafficBytes(totalBytes);
 
     } catch (e) {
         return "请求异常";
@@ -2665,21 +2669,28 @@ const TG_MESSAGE_LIMIT = 4096;
 // 目的：避免首次部署后还没打开面板时，TG 日报因为缺少表结构直接失败。
 async function ensureTgReportSchema(env) {
     if (!env?.DB) return;
-    await env.DB.exec(`CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL)`);
-    await env.DB.exec(`CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id))`);
-    await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
-    try {
-        await env.DB.exec(`ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`);
-    } catch (e) {}
-    try {
-        await env.DB.exec(`ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`);
-    } catch (e) {}
-    try {
-        await env.DB.exec(`ALTER TABLE routes ADD COLUMN watch_report INTEGER DEFAULT 0`);
-    } catch (e) {}
-    try {
-        await env.DB.exec(`ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`);
-    } catch (e) {}
+    await env.DB.exec(`
+        CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL, remark TEXT DEFAULT '', last_play TEXT DEFAULT '', watch_report INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date));
+        CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id));
+        CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '');
+    `);
+    const {
+        results: routeColumns = []
+    } = await env.DB.prepare(`PRAGMA table_info(routes)`).all();
+    const existingColumns = new Set((routeColumns || []).map(column => column.name));
+    const requiredColumns = [
+        ['remark', `ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`],
+        ['last_play', `ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`],
+        ['watch_report', `ALTER TABLE routes ADD COLUMN watch_report INTEGER DEFAULT 0`],
+        ['sort_order', `ALTER TABLE routes ADD COLUMN sort_order INTEGER DEFAULT 0`]
+    ];
+    for (const [name, sql] of requiredColumns) {
+        if (existingColumns.has(name)) continue;
+        try {
+            await env.DB.exec(sql);
+        } catch (e) {}
+    }
 }
 
 // 作用：限制 TG 单条消息长度。
@@ -2738,6 +2749,16 @@ function formatBeijingDateTime(timeMs) {
     return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
+function formatBeijingShortDateTime(timeMs) {
+    if (!Number.isFinite(timeMs)) return '-';
+    const bjTime = new Date(timeMs + BEIJING_OFFSET_MS);
+    const month = String(bjTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(bjTime.getUTCDate()).padStart(2, '0');
+    const hours = String(bjTime.getUTCHours()).padStart(2, '0');
+    const minutes = String(bjTime.getUTCMinutes()).padStart(2, '0');
+    return `${month}-${day} ${hours}:${minutes}`;
+}
+
 function formatDurationShort(diffMs) {
     const totalMinutes = Math.max(Math.ceil(Math.abs(diffMs) / 60000), 0);
     if (totalMinutes <= 0) return '不足 1 分钟';
@@ -2749,6 +2770,10 @@ function formatDurationShort(diffMs) {
     if (hours > 0) parts.push(`${hours}小时`);
     if (days === 0 && minutes > 0) parts.push(`${minutes}分钟`);
     return parts.length > 0 ? parts.join(' ') : '不足 1 小时';
+}
+
+function formatDurationCompact(diffMs) {
+    return formatDurationShort(diffMs).replace(/\s+/g, '');
 }
 
 function getNextWatchCheckMs(route) {
@@ -2774,8 +2799,8 @@ function getRouteDisplayName(route) {
 
 // 作用：生成保号小于 24 小时的 TG 提醒文本。
 // 目的：把即将到期、已经到期、未记录首播的节点集中推给管理员。
-async function buildTgWatchReport(env) {
-    await ensureTgReportSchema(env);
+async function buildTgWatchReport(env, schemaReady = false) {
+    if (!schemaReady) await ensureTgReportSchema(env);
     const {
         results: routes = []
     } = await env.DB.prepare(`
@@ -2814,36 +2839,37 @@ async function buildTgWatchReport(env) {
     urgentRoutes.sort((a, b) => a.nextCheckMs - b.nextCheckMs);
 
     const lines = [
-        '🛡️ 保号小于 24 小时提醒',
-        `统计时间: ${formatBeijingDateTime(nowMs)} (北京时间)`,
-        `已设置保号节点: ${routes.length} 个`,
-        `24 小时内或已到期: ${urgentRoutes.length} 个`,
-        `未记录首播: ${noPlayRoutes.length} 个`
+        '🛡️ 保号提醒',
+        `北京时间 ${formatBeijingDateTime(nowMs)}`,
+        `节点 ${routes.length} 个 | 临近/到期 ${urgentRoutes.length} 个 | 未首播 ${noPlayRoutes.length} 个`
     ];
 
     if (urgentRoutes.length > 0) {
-        lines.push('', '需要尽快观看的节点:');
+        lines.push('', `🚨 需要观看 (${urgentRoutes.length})`);
         urgentRoutes.slice(0, 20).forEach((route, index) => {
             const prefixText = route.prefix ? `/${route.prefix}` : '';
-            const remainText = route.diffMs <= 0 ? `已到期 ${formatDurationShort(route.diffMs)}` : `剩余 ${formatDurationShort(route.diffMs)}`;
+            const statusIcon = route.diffMs <= 0 ? '⛔' : '⚠️';
+            const remainText = route.diffMs <= 0 ? `已到期 ${formatDurationCompact(route.diffMs)}` : `剩余 ${formatDurationCompact(route.diffMs)}`;
             lines.push(`${index + 1}. ${getRouteDisplayName(route)} ${prefixText}`);
-            lines.push(`   ${remainText}，检测时间 ${formatBeijingDateTime(route.nextCheckMs)}，要求 ${route.reportDays} 天`);
+            lines.push(`   ${statusIcon} ${remainText}`);
+            lines.push(`   到期 ${formatBeijingShortDateTime(route.nextCheckMs)} | 要求 ${route.reportDays}天`);
         });
         if (urgentRoutes.length > 20) {
-            lines.push(`还有 ${urgentRoutes.length - 20} 个节点未展示，请登录面板查看完整列表。`);
+            lines.push(`还有 ${urgentRoutes.length - 20} 个未展示，请登录面板查看。`);
         }
     } else {
-        lines.push('', '暂无 24 小时内到期的保号节点。');
+        lines.push('', '✅ 暂无 24 小时内到期节点');
     }
 
     if (noPlayRoutes.length > 0) {
-        lines.push('', '未记录观看的保号节点:');
+        lines.push('', `🕳️ 未记录首播 (${noPlayRoutes.length})`);
         noPlayRoutes.slice(0, 10).forEach((route, index) => {
             const prefixText = route.prefix ? `/${route.prefix}` : '';
-            lines.push(`${index + 1}. ${getRouteDisplayName(route)} ${prefixText}，要求 ${route.reportDays} 天`);
+            lines.push(`${index + 1}. ${getRouteDisplayName(route)} ${prefixText}`);
+            lines.push(`   要求 ${route.reportDays}天`);
         });
         if (noPlayRoutes.length > 10) {
-            lines.push(`还有 ${noPlayRoutes.length - 10} 个未记录首播节点未展示。`);
+            lines.push(`还有 ${noPlayRoutes.length - 10} 个未展示，请登录面板查看。`);
         }
     }
 
@@ -2853,6 +2879,126 @@ async function buildTgWatchReport(env) {
 function getTgCommand(text) {
     const firstToken = String(text || '').trim().split(/\s+/)[0].toLowerCase();
     return firstToken.replace(/@\w+$/, '');
+}
+
+function getTgRouteCommandPrefix(command) {
+    if (!command || !command.startsWith('/')) return '';
+    const prefix = command.slice(1).trim().replace(/^\/+/, '');
+    if (!prefix || ['stats', 'watch', 'traffic', 'start', 'help'].includes(prefix)) return '';
+    return prefix;
+}
+
+function escapeGraphqlString(value) {
+    return String(value || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function getRouteTargetLines(targetText) {
+    const targets = String(targetText || '').split(',').map(item => item.trim()).filter(Boolean);
+    if (targets.length === 0) return ['源站: 未配置'];
+    const lines = [`主站: ${targets[0]}`];
+    targets.slice(1).forEach((target, index) => {
+        lines.push(`备用${index + 1}: ${target}`);
+    });
+    return lines;
+}
+
+function getWatchSummaryText(route) {
+    const reportDays = parsePositiveDays(route.watch_report);
+    if (reportDays === 0) return ['保号: 未开启', '到期: -'];
+
+    const nextCheckMs = getNextWatchCheckMs(route);
+    if (!Number.isFinite(nextCheckMs)) {
+        return [`保号: ${reportDays}天 | 未记录首播`, '到期: -'];
+    }
+
+    const diffMs = nextCheckMs - Date.now();
+    const statusText = diffMs <= 0 ? `⛔ 已到期${formatDurationCompact(diffMs)}` : `⚠️ 剩余${formatDurationCompact(diffMs)}`;
+    return [`保号: ${reportDays}天 | ${statusText}`, `到期: ${formatBeijingShortDateTime(nextCheckMs)}`];
+}
+
+async function getTodayRouteBandwidth(env, prefix) {
+    if (!env.CF_API_TOKEN || !env.CF_ZONE_ID || !prefix) return '缺少变量';
+    try {
+        const end = new Date();
+        const beijingTime = new Date(end.getTime() + BEIJING_OFFSET_MS);
+        beijingTime.setUTCHours(0, 0, 0, 0);
+        const start = new Date(beijingTime.getTime() - BEIJING_OFFSET_MS);
+        const safePrefix = escapeGraphqlString(prefix);
+        const graphqlQuery = {
+            query: `query {
+              viewer {
+                zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
+                  httpRequestsAdaptiveGroups(
+                    limit: 1,
+                    filter: {
+                      clientRequestPath_like: "/${safePrefix}%",
+                      datetime_geq: "${start.toISOString()}",
+                      datetime_leq: "${end.toISOString()}"
+                    }
+                  ) {
+                    sum { edgeResponseBytes }
+                  }
+                }
+              }
+            }`
+        };
+        const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${env.CF_API_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(graphqlQuery)
+        });
+        const cfData = await cfRes.json();
+        if (cfData.errors && cfData.errors.length > 0) return '获取失败';
+        const bytes = cfData?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0]?.sum?.edgeResponseBytes || 0;
+        return formatTrafficBytes(bytes);
+    } catch (e) {
+        return '获取异常';
+    }
+}
+
+async function buildTgRouteReport(env, prefix) {
+    await ensureTgReportSchema(env);
+    const todayStr = new Date(Date.now() + BEIJING_OFFSET_MS).toISOString().split('T')[0];
+    const route = await env.DB.prepare(`
+        SELECT r.*,
+            IFNULL((SELECT count FROM request_stats WHERE prefix = r.prefix AND date = ?), 0) as todayReqs,
+            IFNULL((SELECT COUNT(*) FROM daily_unique_plays d WHERE d.prefix = r.prefix AND d.date = ?), 0) as todayUniquePlays,
+            IFNULL((SELECT COUNT(*) FROM daily_unique_plays d WHERE d.prefix = r.prefix), 0) as totalUniquePlays,
+            IFNULL((SELECT SUM(count) FROM request_stats WHERE prefix = r.prefix), 0) as totalReqs
+        FROM routes r
+        WHERE lower(r.prefix) = lower(?)
+        LIMIT 1
+    `).bind(todayStr, todayStr, prefix).first();
+
+    if (!route) return `未找到对应服务器: /${prefix}`;
+
+    const bandwidth = await getTodayRouteBandwidth(env, route.prefix);
+    const [watchLine, checkLine] = getWatchSummaryText(route);
+    const lastPlayText = route.last_play ? route.last_play : '暂无记录';
+    const modeNames = {
+        off: '保守',
+        realip_only: '严格',
+        dual: '兼容',
+        strict: '强力'
+    };
+
+    return [
+        `📡 ${route.remark || route.prefix}`,
+        `指令: /${route.prefix}`,
+        `模式: ${modeNames[route.mode] || route.mode || '未知'}`,
+        ...getRouteTargetLines(route.target),
+        '',
+        `🛡️ ${watchLine}`,
+        `⏰ ${checkLine}`,
+        `上次观看: ${lastPlayText}`,
+        '',
+        `🌐 今日流量: ${bandwidth}`,
+        `▶️ 播放: 今日 ${route.todayUniquePlays || 0} 部 | 累计 ${route.totalUniquePlays || 0} 部`,
+        `📈 请求: 今日 ${route.todayReqs || 0} 次 | 累计 ${route.totalReqs || 0} 次`
+    ].join('\n');
 }
 
 // 用于生成 TG 播报消息的核心工具函数 (单面板 + 流量之王统计版)
@@ -2879,88 +3025,10 @@ async function sendTgStats(env, chatId) {
             getCFTraffic(env, 30)
         ]);
 
-        // ================= 新增：获取今日流量消耗 TOP 1 节点 =================
-        let topNodeMsg = "暂无数据";
-        if (env.CF_API_TOKEN && env.CF_ZONE_ID && env.DB) {
-            try {
-                // 1. 获取所有节点
-                const {
-                    results: routes
-                } = await env.DB.prepare(`SELECT prefix, remark FROM routes`).all();
-                if (routes && routes.length > 0) {
-                    const end = new Date();
-                    const beijingTime = new Date(end.getTime() + 8 * 3600000);
-                    beijingTime.setUTCHours(0, 0, 0, 0);
-                    const start = new Date(beijingTime.getTime() - 8 * 3600000);
-
-                    let maxBytes = 0;
-                    let topNodeName = "无";
-
-                    // 2. 并发向 CF 查询每个节点今天的精准流量
-                    await Promise.all(routes.map(async (r) => {
-                        try {
-                            const graphqlQuery = {
-                                query: `query {
-                                  viewer {
-                                    zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
-                                      httpRequestsAdaptiveGroups(
-                                        limit: 1,
-                                        filter: {
-                                          clientRequestPath_like: "/${r.prefix}%",
-                                          datetime_geq: "${start.toISOString()}",
-                                          datetime_leq: "${end.toISOString()}"
-                                        }
-                                      ) {
-                                        sum { edgeResponseBytes }
-                                      }
-                                    }
-                                  }
-                                }`
-                            };
-
-                            const cfRes = await fetch('https://api.cloudflare.com/client/v4/graphql', {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Bearer ${env.CF_API_TOKEN}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(graphqlQuery)
-                            });
-
-                            const cfData = await cfRes.json();
-                            const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
-
-                            // 3. 找出最大值
-                            if (bytes > maxBytes) {
-                                maxBytes = bytes;
-                                topNodeName = r.remark || r.prefix;
-                            }
-                        } catch (e) {}
-                    }));
-
-                    // 4. 转换字节并组装文本
-                    if (maxBytes > 0) {
-                        let formatted = "0 B";
-                        if (maxBytes >= 1099511627776) formatted = (maxBytes / 1099511627776).toFixed(2) + " TB";
-                        else if (maxBytes >= 1073741824) formatted = (maxBytes / 1073741824).toFixed(2) + " GB";
-                        else if (maxBytes >= 1048576) formatted = (maxBytes / 1048576).toFixed(2) + " MB";
-                        else if (maxBytes >= 1024) formatted = (maxBytes / 1024).toFixed(2) + " KB";
-                        else formatted = maxBytes + " B";
-
-                        topNodeMsg = `${topNodeName} 跑了 ${formatted}`;
-                    } else {
-                        topNodeMsg = "今日全站零消耗";
-                    }
-                }
-            } catch (e) {
-                topNodeMsg = "获取失败";
-            }
-        }
-        // ====================================================================
-
         const totalStr = totalQuery ? totalQuery.count : 0;
         const regionStr = topRegionQuery ? `${topRegionQuery.country === 'CN' ? '🇨🇳 中国大陆' : topRegionQuery.country} (${topRegionQuery.c} 次)` : '暂无记录';
         const nodeStr = topNodeQuery ? `${topNodeQuery.remark || '未命名节点'} (${topNodeQuery.c} 次)` : '暂无记录';
+        const activeNodeStr = topNodeQuery ? `${topNodeQuery.remark || '未命名节点'} 今日播放 ${topNodeQuery.c} 部` : '暂无记录';
 
         const msg =
             `📊 今日反代播放数据\n\n` +
@@ -2971,11 +3039,11 @@ async function sendTgStats(env, chatId) {
             `当天内: ${trafficToday}\n` +
             `七天内: ${traffic7d}\n` +
             `30天内: ${traffic30d}\n\n` +
-            `🏆 今日流量之王:\n` +
-            `👑 ${topNodeMsg}`;
+            `🏆 今日活跃节点:\n` +
+            `👑 ${activeNodeStr}`;
 
         await sendTgText(env, chatId, msg);
-        const watchReportText = await buildTgWatchReport(env);
+        const watchReportText = await buildTgWatchReport(env, true);
         await sendTgText(env, chatId, watchReportText);
     } catch (e) {
         console.error("TG 日报发送失败:", e.message);
@@ -3138,6 +3206,11 @@ export default {
                                 `🌐 实际流量消耗\n\n当天内: ${trafficToday}\n七天内: ${traffic7d}\n30天内: ${traffic30d}`
                             );
                         })());
+                    } else if (env.DB && env.TG_BOT_TOKEN) {
+                        const routePrefix = getTgRouteCommandPrefix(command);
+                        if (routePrefix) {
+                            ctx.waitUntil(buildTgRouteReport(env, routePrefix).then(text => sendTgText(env, chatId, text)));
+                        }
                     }
                 }
                 return new Response("OK");
