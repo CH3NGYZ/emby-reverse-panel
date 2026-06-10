@@ -1,6 +1,6 @@
-// VERSION: 2.3.3
+// VERSION: 2.3.4
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.3";
+const CURRENT_VERSION = "2.3.4";
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -2952,7 +2952,7 @@ async function getTodayRouteBandwidth(env, prefix) {
         });
         const cfData = await cfRes.json();
         if (cfData.errors && cfData.errors.length > 0) return '获取失败';
-        const bytes = cfData?.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups?.[0]?.sum?.edgeResponseBytes || 0;
+        const bytes = cfData?.data?.viewer?.zones?. [0]?.httpRequestsAdaptiveGroups?. [0]?.sum?.edgeResponseBytes || 0;
         return formatTrafficBytes(bytes);
     } catch (e) {
         return '获取异常';
@@ -4165,9 +4165,15 @@ export default {
             }
         }
 
+        const isEmosProxy = matchedPrefix && matchedPrefix.toLowerCase() === 'emos';
         if (targetUrls.length === 0) return new Response("404: Target empty", {
             status: 404
         });
+        if (isEmosProxy && (!env.EMOS_PROXY_ID || !env.EMOS_PROXY_NAME)) {
+            return new Response("请在 Worker 变量中配置 EMOS_PROXY_ID 和 EMOS_PROXY_NAME", {
+                status: 500
+            });
+        }
 
         // ==========================================
         // 2.7 防爆型精准日志拦截 (修复统计虚高：仅拦截进度上报)
@@ -4282,7 +4288,16 @@ export default {
                 if (referer && referer.startsWith(url.origin)) newHeaders.set("Referer", referer.replace(url.origin, targetUrl.origin));
             }
 
+            if (isEmosProxy) {
+                newHeaders.set("EMOS-PROXY-ID", env.EMOS_PROXY_ID);
+                newHeaders.set("EMOS-PROXY-NAME", env.EMOS_PROXY_NAME);
+                if (realIp) newHeaders.set("X-Forwarded-For", realIp);
+                const rangeHeader = request.headers.get("Range");
+                if (rangeHeader) newHeaders.set("Range", rangeHeader);
+            }
+
             const isStaticOrImage = isStaticPath(targetUrl.pathname);
+            const isEmosRangeRequest = isEmosProxy && newHeaders.has("Range");
             const authLikeState = hasAuthLikeState(newHeaders, targetUrl);
 
             let fetchInit = {
@@ -4291,7 +4306,7 @@ export default {
                 redirect: isStaticOrImage ? 'follow' : 'manual'
             };
 
-            if (isStaticOrImage && enableCache && !authLikeState) {
+            if (isStaticOrImage && enableCache && !authLikeState && !isEmosRangeRequest) {
                 fetchInit.cf = {
                     cacheEverything: true,
                     cacheTtl: 86400
