@@ -1,6 +1,18 @@
-// VERSION: 2.3.4
+// VERSION: 2.3.5
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.4";
+const CURRENT_VERSION = "2.3.5";
+const DIRECT_REDIRECT_HOST_SUFFIXES = [
+    '123pan.com',
+    '123pan.cn',
+    '123684.com',
+    '123865.com',
+    '115.com',
+    '115cdn.com',
+    'anxia.com',
+    '189.cn',
+    'cloud.189.cn',
+    'ctfile.com'
+];
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -4101,10 +4113,27 @@ export default {
                 /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
         }
 
+        function isDirectCloudDriveRedirect(location, targetUrl) {
+            if (!location) return false;
+            try {
+                if (location.startsWith('//')) {
+                    const protocol = targetUrl ? targetUrl.protocol : 'https:';
+                    location = protocol + location;
+                }
+                if (!/^https?:\/\//i.test(location)) return false;
+                const parsed = new URL(location);
+                const host = parsed.hostname.toLowerCase();
+                return DIRECT_REDIRECT_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith('.' + suffix));
+            } catch (e) {
+                return false;
+            }
+        }
+
         // 作用：把源站返回的重定向地址改写成代理域可继续访问的地址。
         // 目的：避免浏览器在 302/301 后直接跳离当前 Worker 或打到错误源站。
         function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix) {
             if (!location) return location;
+            if (isDirectCloudDriveRedirect(location, targetUrl)) return location;
             if (location.startsWith('//')) {
                 try {
                     const protocol = targetUrl ? targetUrl.protocol : new URL(targetOrigins[0]).protocol;
