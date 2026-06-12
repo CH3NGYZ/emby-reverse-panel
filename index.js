@@ -1,9 +1,9 @@
-// VERSION: 2.3.6
+// VERSION: 2.3.7
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.6";
+const CURRENT_VERSION = "2.3.7";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
-    'ctyunxs.cn',
-    '123pan.cn',
+    'ctyunxs.cn', // 天翼云
+    '123pan.cn', // 123pan
     // 以下未经测试
     '123pan.com',
     '123684.com',
@@ -4556,10 +4556,26 @@ export default {
             }
         }
 
+        function isDirectIpRedirect(location, targetUrl) {
+            if (!location) return false;
+            try {
+                if (location.startsWith('//')) {
+                    const protocol = targetUrl ? targetUrl.protocol : 'https:';
+                    location = protocol + location;
+                }
+                if (!/^https?:\/\//i.test(location)) return false;
+                const host = new URL(location).hostname;
+                return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host);
+            } catch (e) {
+                return false;
+            }
+        }
+
         // 作用：把源站返回的重定向地址改写成代理域可继续访问的地址。
         // 目的：避免浏览器在 302/301 后直接跳离当前 Worker 或打到错误源站。
         function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix) {
             if (!location) return location;
+            if (isDirectIpRedirect(location, targetUrl)) return location;
             if (isDirectCloudDriveRedirect(location, targetUrl)) return location;
             if (location.startsWith('//')) {
                 try {
