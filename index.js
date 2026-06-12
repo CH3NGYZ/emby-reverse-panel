@@ -2,8 +2,10 @@
 // 🟢 面板核心配置区 (放在最顶端方便修改)
 const CURRENT_VERSION = "2.3.6";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
-    '123pan.com',
+    'ctyunxs.cn',
     '123pan.cn',
+    // 以下未经测试
+    '123pan.com',
     '123684.com',
     '123865.com',
     '115.com',
@@ -977,15 +979,18 @@ const HTML_UI = `
             return minutes + ' 分';
         }
 
-        function getPlaybackStatusView(rawStatus, idleSeconds) {
-            const status = String(rawStatus || '').toLowerCase();
-            const idle = parseInt(idleSeconds, 10) || 0;
-            if (status === 'stopped') {
-                return { text: '停止', color: '#ff3b30', bg: 'rgba(255,59,48,0.1)', border: 'rgba(255,59,48,0.18)' };
-            }
-            if (status === 'start') {
-                return { text: '起播', color: '#0071e3', bg: 'rgba(0,113,227,0.1)', border: 'rgba(0,113,227,0.18)' };
-            }
+function getPlaybackStatusView(rawStatus, idleSeconds) {
+    const status = String(rawStatus || '').toLowerCase();
+    const idle = parseInt(idleSeconds, 10) || 0;
+    if (status === 'stopped') {
+        return { text: '停止', color: '#ff3b30', bg: 'rgba(255,59,48,0.1)', border: 'rgba(255,59,48,0.18)' };
+    }
+    if (status === 'paused') {
+        return { text: '暂停', color: '#ff9500', bg: 'rgba(255,149,0,0.1)', border: 'rgba(255,149,0,0.18)' };
+    }
+    if (status === 'start') {
+        return { text: '起播', color: '#0071e3', bg: 'rgba(0,113,227,0.1)', border: 'rgba(0,113,227,0.18)' };
+    }
             if (status === 'watching' && idle > 15) {
                 return { text: '暂停', color: '#ff9500', bg: 'rgba(255,149,0,0.1)', border: 'rgba(255,149,0,0.18)' };
             }
@@ -2547,6 +2552,8 @@ async function extractPlaybackUserId(request, url) {
 
     const pathMatch = url.pathname.match(/\/Users\/([^/]+)/i);
     if (pathMatch?. [1]) return String(pathMatch[1]).trim();
+    const headerUserId = extractEmbyUserIdFromHeaders(request);
+    if (headerUserId) return headerUserId;
     if (request.method === 'GET' || request.method === 'HEAD') return '';
 
     try {
@@ -2597,6 +2604,8 @@ async function extractPlaybackItemName(request, url) {
 // 目的：优先记录可读片名，避免播放日志里只有 ItemId 没有标题。
 function extractPlaybackItemNameFromPayload(payload) {
     if (!payload || typeof payload !== 'object') return '';
+    const nestedItemName = formatPlaybackItemName(payload.NowPlayingItem) || formatPlaybackItemName(payload.Item);
+    if (nestedItemName) return nestedItemName;
     return String(
         payload.Name ||
         payload.name ||
@@ -2640,10 +2649,9 @@ function formatPlaybackItemName(itemInfo) {
 
 // 作用：通过当前反代节点补查条目详情里的影片名。
 // 目的：让 PlaybackInfo 拿不到 Name 时，仍能按 prefix + userId + itemId 拿到真实标题。
-async function fetchPlaybackItemNameByUser(targetUrls, userId, itemId, request) {
-    if (!Array.isArray(targetUrls) || targetUrls.length === 0 || !userId || !itemId) return '';
+async function fetchPlaybackItemNameByUser(targetUrls, userId, itemId, request, matchedPrefix = '', env = null) {
+    if (!Array.isArray(targetUrls) || targetUrls.length === 0 || !itemId) return '';
     try {
-        const itemUrl = new URL(`/emby/Users/${encodeURIComponent(userId)}/Items/${encodeURIComponent(itemId)}`, targetUrls[0]).toString();
         const headers = new Headers();
         const passthroughHeaders = [
             'x-emby-authorization',
@@ -2660,26 +2668,44 @@ async function fetchPlaybackItemNameByUser(targetUrls, userId, itemId, request) 
         });
         headers.delete('content-length');
         if (!headers.has('accept')) headers.set('accept', 'application/json');
+        if (String(matchedPrefix || '').toLowerCase() === 'emos' && env?.EMOS_PROXY_ID && env?.EMOS_PROXY_NAME) {
+            headers.set('EMOS-PROXY-ID', env.EMOS_PROXY_ID);
+            headers.set('EMOS-PROXY-NAME', env.EMOS_PROXY_NAME);
+            const realIp = request.headers.get('cf-connecting-ip') || request.headers.get('x-real-ip') || (request.headers.get('x-forwarded-for') || '').split(',')[0].trim();
+            if (realIp) headers.set('X-Forwarded-For', realIp);
+            const cookie = request.headers.get('Cookie');
+            if (cookie) {
+                const keptCookies = cookie.split(';').map(item => item.trim()).filter(item => item && !item.toLowerCase().startsWith('admin_token='));
+                if (keptCookies.length > 0) headers.set('Cookie', keptCookies.join('; '));
+            }
+        }
 
-        const response = await fetch(itemUrl, {
-            method: 'GET',
-            headers,
-            redirect: 'manual'
-        });
-        const responseText = await response.text();
-        console.log('PlaybackInfo Item Lookup:', JSON.stringify({
-            url: itemUrl,
-            status: response.status,
-            ok: response.ok,
-            body: responseText.slice(0, 1000)
-        }));
-        if (!response.ok) return '';
-        const itemInfo = JSON.parse(responseText);
-        return formatPlaybackItemName(itemInfo);
+        const itemPaths = [];
+        if (userId) itemPaths.push(`/emby/Users/${encodeURIComponent(userId)}/Items/${encodeURIComponent(itemId)}`);
+        itemPaths.push(`/emby/Items/${encodeURIComponent(itemId)}`);
+
+        for (const itemPath of itemPaths) {
+            const itemUrl = new URL(itemPath, targetUrls[0]).toString();
+            const response = await fetch(itemUrl, {
+                method: 'GET',
+                headers,
+                redirect: 'manual'
+            });
+            const responseText = await response.text();
+            console.log('PlaybackInfo Item Lookup:', JSON.stringify({
+                url: itemUrl,
+                status: response.status,
+                ok: response.ok,
+                body: responseText.slice(0, 1000)
+            }));
+            if (!response.ok) continue;
+            const itemName = formatPlaybackItemName(JSON.parse(responseText));
+            if (itemName) return itemName;
+        }
     } catch (e) {
         console.log('PlaybackInfo Item Lookup Error:', e.message);
-        return '';
     }
+    return '';
 }
 
 // 作用：构建 prefix + itemId 维度的片名绑定语句。
@@ -2711,6 +2737,20 @@ function normalizeBoolean(value) {
     return String(value).toLowerCase() === 'true';
 }
 
+function extractEmbyAuthorizationValue(headerValue, key) {
+    const text = String(headerValue || '');
+    if (!text || !key) return '';
+    const quotedMatch = text.match(new RegExp(`${key}\\s*=\\s*"([^"]+)"`, 'i'));
+    if (quotedMatch?. [1]) return quotedMatch[1].trim();
+    const plainMatch = text.match(new RegExp(`${key}\\s*=\\s*([^,\\s]+)`, 'i'));
+    return plainMatch?. [1] ? plainMatch[1].trim() : '';
+}
+
+function extractEmbyUserIdFromHeaders(request) {
+    return extractEmbyAuthorizationValue(request.headers.get('x-emby-authorization'), 'UserId') ||
+        extractEmbyAuthorizationValue(request.headers.get('authorization'), 'UserId');
+}
+
 function getPlaybackSessionKey(report, request) {
     if (report?.sessionId) return report.sessionId;
     const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || '';
@@ -2725,7 +2765,7 @@ function isSuccessfulPlaybackReportResponse(status) {
 async function extractPlaybackProgressReport(request, url) {
     const report = {
         itemId: String(url.searchParams.get('ItemId') || url.searchParams.get('itemId') || '').trim(),
-        userId: String(url.searchParams.get('UserId') || url.searchParams.get('userId') || '').trim(),
+        userId: String(url.searchParams.get('UserId') || url.searchParams.get('userId') || extractEmbyUserIdFromHeaders(request) || '').trim(),
         sessionId: String(url.searchParams.get('SessionId') || url.searchParams.get('sessionId') || url.searchParams.get('PlaySessionId') || url.searchParams.get('playSessionId') || '').trim(),
         itemName: String(url.searchParams.get('Name') || url.searchParams.get('name') || '').trim(),
         positionTicks: normalizePositionTicks(url.searchParams.get('PositionTicks') || url.searchParams.get('positionTicks') || url.searchParams.get('currentPositionTicks')),
@@ -2807,7 +2847,7 @@ async function resolvePlaybackItemName(env, request, matchedPrefix, targetUrls, 
         } catch (e) {}
     }
     if (!playbackItemName && playbackUserId && playbackItemId) {
-        playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
+        playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request, matchedPrefix, env);
     }
 
     return playbackItemName;
@@ -2865,6 +2905,7 @@ async function recordPlaybackStartReport(env, request, matchedPrefix, targetUrls
 async function recordPlaybackProgressReport(env, request, matchedPrefix, targetUrls, report, playbackStatus = 'watching') {
     if (!env?.DB || !matchedPrefix || !report) return;
 
+    const effectivePlaybackStatus = playbackStatus === 'watching' && report.isPaused ? 'paused' : playbackStatus;
     const nowMs = Date.now();
     const todayStr = new Date(nowMs + BEIJING_OFFSET_MS).toISOString().split('T')[0];
     const nowTime = new Date(nowMs + BEIJING_OFFSET_MS).toISOString().replace('T', ' ').split('.')[0];
@@ -2895,7 +2936,7 @@ async function recordPlaybackProgressReport(env, request, matchedPrefix, targetU
         const positionDeltaSeconds = Math.floor((report.positionTicks - previousTicks) / EMBY_TICKS_PER_SECOND);
         if (positionDeltaSeconds <= MAX_PROGRESS_INCREMENT_SECONDS) {
             const elapsedSeconds = Number.isFinite(previousUpdatedAtMs) ? Math.max(0, Math.ceil((nowMs - previousUpdatedAtMs) / 1000)) : positionDeltaSeconds;
-            watchSeconds = Math.max(0, Math.min(positionDeltaSeconds, elapsedSeconds + 5));
+            watchSeconds = Math.max(0, Math.min(positionDeltaSeconds, elapsedSeconds));
         }
     }
 
@@ -2918,9 +2959,9 @@ async function recordPlaybackProgressReport(env, request, matchedPrefix, targetU
     const clientCity = String(request.cf?.city || request.headers.get('cf-city') || '').trim();
     const clientUa = request.headers.get("User-Agent") || "Unknown";
     stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, region, city, ua, item_id, item_name, position_ticks, watch_seconds, playback_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, playbackItemId, playbackItemName, report.positionTicks || 0, watchSeconds, playbackStatus));
+        .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, playbackItemId, playbackItemName, report.positionTicks || 0, watchSeconds, effectivePlaybackStatus));
     if (sessionKey) {
-        if (playbackStatus === 'stopped') {
+        if (effectivePlaybackStatus === 'stopped') {
             stmts.push(env.DB.prepare(`DELETE FROM playback_progress_state WHERE prefix = ? AND session_key = ?`)
                 .bind(matchedPrefix, sessionKey));
         } else {
@@ -2939,7 +2980,7 @@ async function recordPlaybackProgressReport(env, request, matchedPrefix, targetU
         previousTicks,
         positionTicks: report.positionTicks,
         isPaused: report.isPaused,
-        playbackStatus,
+        playbackStatus: effectivePlaybackStatus,
         watchSeconds
     }));
 }
@@ -4278,6 +4319,107 @@ export default {
                 /(\/Images\/|\/Icons\/|\/Branding\/|\/emby\/covers\/|\/img\/)/i.test(pathname);
         }
 
+        function isVideoLikeProxyPath(pathname) {
+            return /\.(m3u8|m4s|ts|mp4|mkv|avi|mov|webm|flv|wmv|mpg|mpeg|mp3|m4a|aac|flac|wav|ogg|opus)$/i.test(pathname) ||
+                /(\/Videos\/|\/Audio\/|\/LiveTv\/|\/LiveStreams\/|\/hls\/|\/dash\/|\/stream|\/transcode|\/Download)/i.test(pathname);
+        }
+
+        function isTextLikeBody(contentType) {
+            const type = String(contentType || '').toLowerCase();
+            if (!type) return true;
+            return type.includes('json') ||
+                type.startsWith('text/') ||
+                type.includes('xml') ||
+                type.includes('javascript') ||
+                type.includes('x-www-form-urlencoded');
+        }
+
+        function getProxyBodyLogSkipReason(pathname, headers) {
+            const contentType = headers.get('content-type') || '';
+            const contentLength = parseInt(headers.get('content-length') || '0', 10) || 0;
+            if (headers.has('range')) return 'range-request';
+            if (isVideoLikeProxyPath(pathname)) return 'video-like-path';
+            if (!isTextLikeBody(contentType)) return 'non-text-content-type';
+            if (contentLength > 200000) return 'body-too-large';
+            return '';
+        }
+
+        async function readBodyTextForLog(streamOwner, limit = 8000) {
+            const text = await streamOwner.clone().text();
+            return {
+                body: text.length > limit ? text.slice(0, limit) : text,
+                truncated: text.length > limit,
+                length: text.length
+            };
+        }
+
+        async function logProxyRequestBody(request, url, matchedPrefix, targetUrls) {
+            const skipReason = getProxyBodyLogSkipReason(url.pathname, request.headers);
+            if (skipReason) {
+                console.log('ProxyBody Request:', JSON.stringify({
+                    prefix: matchedPrefix || '',
+                    method: request.method,
+                    path: url.pathname + url.search,
+                    skipped: skipReason
+                }));
+                return;
+            }
+            try {
+                const bodyInfo = (request.method === 'GET' || request.method === 'HEAD') ? {
+                    body: '',
+                    truncated: false,
+                    length: 0
+                } : await readBodyTextForLog(request);
+                console.log('ProxyBody Request:', JSON.stringify({
+                    prefix: matchedPrefix || '',
+                    method: request.method,
+                    path: url.pathname + url.search,
+                    target: targetUrls?. [0] || '',
+                    contentType: request.headers.get('content-type') || '',
+                    ...bodyInfo
+                }));
+            } catch (e) {
+                console.log('ProxyBody Request Error:', e.message);
+            }
+        }
+
+        async function logProxyResponseBody(response, responseHeaders, url, matchedPrefix, finalTargetUrl) {
+            const skipReason = getProxyBodyLogSkipReason(url.pathname, responseHeaders);
+            const location = responseHeaders.get('Location') || '';
+            const redirectInfo = response.status >= 300 && response.status < 400 ? {
+                location
+            } : {};
+            if (skipReason) {
+                console.log('ProxyBody Response:', JSON.stringify({
+                    prefix: matchedPrefix || '',
+                    status: response.status,
+                    path: url.pathname + url.search,
+                    target: finalTargetUrl ? finalTargetUrl.toString() : '',
+                    ...redirectInfo,
+                    skipped: skipReason
+                }));
+                return;
+            }
+            try {
+                const bodyInfo = response.status === 204 || response.status === 304 ? {
+                    body: '',
+                    truncated: false,
+                    length: 0
+                } : await readBodyTextForLog(response);
+                console.log('ProxyBody Response:', JSON.stringify({
+                    prefix: matchedPrefix || '',
+                    status: response.status,
+                    path: url.pathname + url.search,
+                    target: finalTargetUrl ? finalTargetUrl.toString() : '',
+                    contentType: responseHeaders.get('content-type') || '',
+                    ...redirectInfo,
+                    ...bodyInfo
+                }));
+            } catch (e) {
+                console.log('ProxyBody Response Error:', e.message);
+            }
+        }
+
         // 作用：判断当前请求是否带有 token、Cookie 或鉴权头。
         // 目的：避免把带鉴权态的图片和静态响应错误缓存到 CDN。
         function hasAuthLikeState(headers, targetUrl) {
@@ -4518,6 +4660,9 @@ export default {
         if (request.method !== 'GET' && request.method !== 'HEAD' && targetUrls.length > 1) {
             bodyBuffer = await request.clone().arrayBuffer();
         }
+        if (ctx && ctx.waitUntil) {
+            ctx.waitUntil(logProxyRequestBody(request, url, matchedPrefix, targetUrls));
+        }
 
         let finalResponse = null;
         let lastError = null;
@@ -4629,6 +4774,9 @@ export default {
 
         const responseHeaders = new Headers(finalResponse.headers);
         rewriteSetCookieForProxy(responseHeaders);
+        if (ctx && ctx.waitUntil) {
+            ctx.waitUntil(logProxyResponseBody(finalResponse, responseHeaders, url, matchedPrefix, finalTargetUrl));
+        }
 
         if (playbackStartReport) {
             const reportAccepted = isSuccessfulPlaybackReportResponse(finalResponse.status);
@@ -4730,7 +4878,7 @@ export default {
                     } catch (e) {}
                 }
                 if (!playbackItemName && matchedPrefix && playbackUserId && playbackItemId) {
-                    playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
+                    playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request, matchedPrefix, env);
                 }
                 if (env.DB && playbackItemId && playbackItemName) {
                     const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
