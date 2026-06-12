@@ -1,6 +1,6 @@
-// VERSION: 2.3.5
+// VERSION: 2.3.6
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.5";
+const CURRENT_VERSION = "2.3.6";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
     '123pan.com',
     '123pan.cn',
@@ -360,11 +360,11 @@ const HTML_UI = `
                     </div>
 
                     <div class="dashboard-section-card wide">
-                        <h3 style="margin: 0 0 16px 0;">🕵️ 观看记录 <span style="font-size:12px; color:var(--text-sec);">(仅拦截 Sessions/Playing/Progress 真实进度上报)</span></h3>
+                        <h3 style="margin: 0 0 16px 0;">🕵️ 观看记录 <span style="font-size:12px; color:var(--text-sec);">(Sessions/Playing 缓存片名，Progress 按真实增量统计)</span></h3>
                         <div class="table-wrapper">
                             <table class="dashboard-log-table" style="width: 100%;">
-                                <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
-                                <tbody id="logTableBody"><tr><td colspan="7" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
+                                <thead><tr><th>访问时间</th><th>目标节点</th><th>播放视频</th><th>播放状态</th><th>观看时长</th><th>真实 IP 地址</th><th>归属地</th><th>User-Agent</th></tr></thead>
+                                <tbody id="logTableBody"><tr><td colspan="8" style="text-align:center; padding: 30px;">加载数据中...</td></tr></tbody>
                             </table>
                         </div>
                     </div>
@@ -760,7 +760,7 @@ const HTML_UI = `
                 const tbody = document.getElementById('logTableBody');
                 tbody.innerHTML = '';
                 if(data.recents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 30px;">暂无日志记录</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 30px;">暂无日志记录</td></tr>';
                 } else {
                     data.recents.forEach(log => {
                         const tr = document.createElement('tr');
@@ -769,10 +769,12 @@ const HTML_UI = `
                         const displayCountry = !countryCode || countryCode === 'UNKNOWN' || countryCode === 'XX' || countryCode === 'T1' ? '未知' : (isChina ? '中国大陆' : countryCode);
                         const displayLocation = [displayCountry, log.region || '', log.city || ''].filter(Boolean).join(' / ');
                         const watchDuration = formatWatchDuration(log.watch_seconds || 0);
+                        const status = getPlaybackStatusView(log.playback_status, log.idle_seconds);
                         tr.innerHTML = \`
                             <td data-label="访问时间" style="font-size:12px; white-space:nowrap;">\${log.timestamp}</td>
                             <td data-label="目标节点"><span class="badge" style="background:rgba(0,113,227,0.1);color:var(--primary);">\${log.prefix}</span></td>
                             <td data-label="播放视频" style="font-size:12px; color:var(--text); word-break:break-word; white-space:normal; line-height:1.4;">\${log.item_name || '未识别视频名'}</td>
+                            <td data-label="播放状态"><span class="badge" style="background:\${status.bg}; color:\${status.color}; border:1px solid \${status.border};">\${status.text}</span></td>
                             <td data-label="观看时长" style="font-size:12px; color:var(--text); white-space:nowrap;">\${watchDuration}</td>
                             <td data-label="真实 IP" style="font-family:monospace; font-size:13px; color:var(--text-sec); word-break:break-all;">\${log.ip}</td>
                             <td data-label="归属地"><span class="badge dashboard-log-location-badge" style="background:\${isChina ? 'rgba(52,199,89,0.1)' : 'rgba(255,149,0,0.1)'}; color:\${isChina ? '#34c759' : '#ff9500'};">\${displayLocation}</span></td>
@@ -784,7 +786,7 @@ const HTML_UI = `
 
             } catch (e) {
                 const errMsg = e.name === 'AbortError' ? '网络超时，CF 接口拥堵，请稍后重试' : e.message;
-                document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="7" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
+                document.getElementById('logTableBody').innerHTML = \`<tr><td colspan="8" style="text-align:center;color:#ff3b30; padding: 30px;">独立图表数据拉取失败: \${errMsg}</td></tr>\`;
             }
 
             syncDashboardFirstRowHeights();
@@ -973,6 +975,21 @@ const HTML_UI = `
             }
             if (remainSeconds > 0) return minutes + ' 分 ' + remainSeconds + ' 秒';
             return minutes + ' 分';
+        }
+
+        function getPlaybackStatusView(rawStatus, idleSeconds) {
+            const status = String(rawStatus || '').toLowerCase();
+            const idle = parseInt(idleSeconds, 10) || 0;
+            if (status === 'stopped') {
+                return { text: '停止', color: '#ff3b30', bg: 'rgba(255,59,48,0.1)', border: 'rgba(255,59,48,0.18)' };
+            }
+            if (status === 'start') {
+                return { text: '起播', color: '#0071e3', bg: 'rgba(0,113,227,0.1)', border: 'rgba(0,113,227,0.18)' };
+            }
+            if (status === 'watching' && idle > 15) {
+                return { text: '暂停', color: '#ff9500', bg: 'rgba(255,149,0,0.1)', border: 'rgba(255,149,0,0.18)' };
+            }
+            return { text: '观看', color: '#34c759', bg: 'rgba(52,199,89,0.1)', border: 'rgba(52,199,89,0.18)' };
         }
 
         // 作用：把毫秒级倒计时转换成“X天 Y小时”。
@@ -2673,9 +2690,265 @@ function buildPlaybackItemRefStmt(env, prefix, itemId, itemName, nowTime) {
         .bind(prefix, itemId, itemName, nowTime);
 }
 
+function getFirstTextValue(payload, keys) {
+    if (!payload || typeof payload !== 'object') return '';
+    for (const key of keys) {
+        const value = payload[key];
+        if (value !== undefined && value !== null && value !== '') return String(value).trim();
+    }
+    return '';
+}
+
+function normalizePositionTicks(value) {
+    if (value === undefined || value === null || value === '') return 0;
+    const ticks = Number(value);
+    return Number.isFinite(ticks) && ticks > 0 ? Math.floor(ticks) : 0;
+}
+
+function normalizeBoolean(value) {
+    if (value === true || value === false) return value;
+    if (value === undefined || value === null || value === '') return false;
+    return String(value).toLowerCase() === 'true';
+}
+
+function getPlaybackSessionKey(report, request) {
+    if (report?.sessionId) return report.sessionId;
+    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || '';
+    const clientUa = request.headers.get("User-Agent") || '';
+    return [report?.userId || '', report?.itemId || '', clientIp, clientUa].filter(Boolean).join('|');
+}
+
+function isSuccessfulPlaybackReportResponse(status) {
+    return status >= 200 && status < 300;
+}
+
+async function extractPlaybackProgressReport(request, url) {
+    const report = {
+        itemId: String(url.searchParams.get('ItemId') || url.searchParams.get('itemId') || '').trim(),
+        userId: String(url.searchParams.get('UserId') || url.searchParams.get('userId') || '').trim(),
+        sessionId: String(url.searchParams.get('SessionId') || url.searchParams.get('sessionId') || url.searchParams.get('PlaySessionId') || url.searchParams.get('playSessionId') || '').trim(),
+        itemName: String(url.searchParams.get('Name') || url.searchParams.get('name') || '').trim(),
+        positionTicks: normalizePositionTicks(url.searchParams.get('PositionTicks') || url.searchParams.get('positionTicks') || url.searchParams.get('currentPositionTicks')),
+        isPaused: normalizeBoolean(url.searchParams.get('IsPaused') || url.searchParams.get('isPaused'))
+    };
+
+    if (request.method === 'GET' || request.method === 'HEAD') return report;
+
+    try {
+        const contentType = (request.headers.get('content-type') || '').toLowerCase();
+        const bodyText = await request.clone().text();
+        if (!bodyText) return report;
+
+        if (contentType.includes('application/json')) {
+            const payload = JSON.parse(bodyText);
+            report.itemId = report.itemId || getFirstTextValue(payload, ['ItemId', 'itemId']) || getFirstTextValue(payload?.Item, ['Id', 'id']) || getFirstTextValue(payload?.NowPlayingItem, ['Id', 'id']);
+            report.userId = report.userId || getFirstTextValue(payload, ['UserId', 'userId']) || getFirstTextValue(payload?.User, ['Id', 'id']);
+            report.sessionId = report.sessionId || getFirstTextValue(payload, ['SessionId', 'sessionId', 'PlaySessionId', 'playSessionId']);
+            report.itemName = report.itemName || extractPlaybackItemNameFromPayload(payload);
+            report.positionTicks = report.positionTicks || normalizePositionTicks(
+                payload?.PositionTicks ??
+                payload?.positionTicks ??
+                payload?.CurrentPositionTicks ??
+                payload?.currentPositionTicks ??
+                payload?.NowPlayingItem?.PositionTicks ??
+                payload?.Item?.PositionTicks
+            );
+            report.isPaused = report.isPaused || normalizeBoolean(payload?.IsPaused ?? payload?.isPaused);
+        } else if (contentType.includes('application/x-www-form-urlencoded')) {
+            const formData = new URLSearchParams(bodyText);
+            report.itemId = report.itemId || String(formData.get('ItemId') || formData.get('itemId') || '').trim();
+            report.userId = report.userId || String(formData.get('UserId') || formData.get('userId') || '').trim();
+            report.sessionId = report.sessionId || String(formData.get('SessionId') || formData.get('sessionId') || formData.get('PlaySessionId') || formData.get('playSessionId') || '').trim();
+            report.itemName = report.itemName || String(formData.get('Name') || formData.get('name') || formData.get('ItemName') || '').trim();
+            report.positionTicks = report.positionTicks || normalizePositionTicks(formData.get('PositionTicks') || formData.get('positionTicks') || formData.get('CurrentPositionTicks') || formData.get('currentPositionTicks'));
+            report.isPaused = report.isPaused || normalizeBoolean(formData.get('IsPaused') || formData.get('isPaused'));
+        }
+    } catch (e) {}
+
+    return report;
+}
+
+async function ensurePlaybackProgressSchema(env) {
+    if (!env?.DB) return;
+    await env.DB.exec(`
+        CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date));
+        CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id));
+        CREATE TABLE IF NOT EXISTS playback_items (item_id TEXT PRIMARY KEY, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS playback_item_refs (prefix TEXT, item_id TEXT, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, item_id));
+        CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT DEFAULT '', region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '', position_ticks INTEGER DEFAULT 0, watch_seconds INTEGER DEFAULT 0, playback_status TEXT DEFAULT 'watching');
+        CREATE TABLE IF NOT EXISTS playback_progress_state (prefix TEXT NOT NULL, session_key TEXT NOT NULL, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '', last_position_ticks INTEGER DEFAULT 0, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, session_key));
+    `);
+    try {
+        await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN position_ticks INTEGER DEFAULT 0`);
+    } catch (e) {}
+    try {
+        await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN watch_seconds INTEGER DEFAULT 0`);
+    } catch (e) {}
+    try {
+        await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN playback_status TEXT DEFAULT 'watching'`);
+    } catch (e) {}
+}
+
+async function resolvePlaybackItemName(env, request, matchedPrefix, targetUrls, report) {
+    const playbackItemId = report?.itemId || '';
+    const playbackUserId = report?.userId || '';
+    let playbackItemName = report?.itemName || '';
+
+    if (playbackItemId && !playbackItemName) {
+        try {
+            const cachedRef = await env.DB.prepare(`SELECT item_name FROM playback_item_refs WHERE prefix = ? AND item_id = ?`).bind(matchedPrefix, playbackItemId).first();
+            playbackItemName = String(cachedRef?.item_name || '').trim();
+        } catch (e) {}
+    }
+    if (playbackItemId && !playbackItemName) {
+        try {
+            const cachedItem = await env.DB.prepare(`SELECT item_name FROM playback_items WHERE item_id = ?`).bind(playbackItemId).first();
+            playbackItemName = String(cachedItem?.item_name || '').trim();
+        } catch (e) {}
+    }
+    if (!playbackItemName && playbackUserId && playbackItemId) {
+        playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
+    }
+
+    return playbackItemName;
+}
+
+function buildPlaybackItemNameStmts(env, matchedPrefix, playbackItemId, playbackItemName, nowTime) {
+    if (!playbackItemId || !playbackItemName) return [];
+    const stmts = [
+        env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
+        .bind(playbackItemId, playbackItemName, nowTime)
+    ];
+    const refStmt = buildPlaybackItemRefStmt(env, matchedPrefix, playbackItemId, playbackItemName, nowTime);
+    if (refStmt) stmts.push(refStmt);
+    return stmts;
+}
+
+async function recordPlaybackStartReport(env, request, matchedPrefix, targetUrls, report) {
+    if (!env?.DB || !matchedPrefix || !report?.itemId) return;
+    await ensurePlaybackProgressSchema(env);
+
+    const todayStr = new Date(Date.now() + BEIJING_OFFSET_MS).toISOString().split('T')[0];
+    const nowTime = new Date(Date.now() + BEIJING_OFFSET_MS).toISOString().replace('T', ' ').split('.')[0];
+    const sessionKey = getPlaybackSessionKey(report, request);
+    if (!sessionKey) return;
+
+    const playbackItemName = await resolvePlaybackItemName(env, request, matchedPrefix, targetUrls, report);
+    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
+    const rawCountry = request.headers.get("cf-ipcountry") || request.cf?.country || request.headers.get("x-vercel-ip-country") || request.headers.get("x-country-code") || '';
+    const clientCountry = rawCountry && rawCountry !== 'XX' && rawCountry !== 'T1' ? rawCountry : 'Unknown';
+    const clientRegion = String(request.cf?.region || request.headers.get('cf-region') || '').trim();
+    const clientCity = String(request.cf?.city || request.headers.get('cf-city') || '').trim();
+    const clientUa = request.headers.get("User-Agent") || "Unknown";
+    const stmts = [
+        env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix),
+        env.DB.prepare(`INSERT OR IGNORE INTO daily_unique_plays (prefix, date, item_id, first_play) VALUES (?, ?, ?, ?)`)
+        .bind(matchedPrefix, todayStr, report.itemId, nowTime),
+        env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) SELECT ?, ?, 1 WHERE changes() > 0 ON CONFLICT(prefix, date) DO UPDATE SET count = count + excluded.count`)
+        .bind(matchedPrefix, todayStr),
+        ...buildPlaybackItemNameStmts(env, matchedPrefix, report.itemId, playbackItemName, nowTime),
+        env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, region, city, ua, item_id, item_name, position_ticks, watch_seconds, playback_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, report.itemId, playbackItemName, report.positionTicks || 0, 0, 'start'),
+        env.DB.prepare(`INSERT INTO playback_progress_state (prefix, session_key, item_id, item_name, last_position_ticks, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(prefix, session_key) DO UPDATE SET item_id = excluded.item_id, item_name = excluded.item_name, last_position_ticks = excluded.last_position_ticks, updated_at = excluded.updated_at`)
+        .bind(matchedPrefix, sessionKey, report.itemId, playbackItemName, report.positionTicks || 0, nowTime)
+    ];
+    await env.DB.batch(stmts);
+    console.log('PlaybackStart Recorded:', JSON.stringify({
+        prefix: matchedPrefix,
+        itemId: report.itemId,
+        itemName: playbackItemName,
+        hasSession: !!sessionKey,
+        positionTicks: report.positionTicks || 0
+    }));
+}
+
+async function recordPlaybackProgressReport(env, request, matchedPrefix, targetUrls, report, playbackStatus = 'watching') {
+    if (!env?.DB || !matchedPrefix || !report) return;
+
+    const nowMs = Date.now();
+    const todayStr = new Date(nowMs + BEIJING_OFFSET_MS).toISOString().split('T')[0];
+    const nowTime = new Date(nowMs + BEIJING_OFFSET_MS).toISOString().replace('T', ' ').split('.')[0];
+    let playbackItemId = report.itemId || '';
+    const sessionKey = getPlaybackSessionKey(report, request);
+    await ensurePlaybackProgressSchema(env);
+
+    let playbackItemName = '';
+    let previousTicks = 0;
+    let previousUpdatedAtMs = NaN;
+    let hasPreviousState = false;
+    if (sessionKey) {
+        try {
+            const state = await env.DB.prepare(`SELECT item_id, item_name, last_position_ticks, updated_at FROM playback_progress_state WHERE prefix = ? AND session_key = ?`).bind(matchedPrefix, sessionKey).first();
+            if (state && (!playbackItemId || !state.item_id || state.item_id === playbackItemId)) {
+                playbackItemId = playbackItemId || String(state.item_id || '').trim();
+                previousTicks = Number(state.last_position_ticks || 0);
+                previousUpdatedAtMs = parseBeijingDateTimeMs(state.updated_at);
+                playbackItemName = String(state.item_name || '').trim();
+                hasPreviousState = true;
+            }
+        } catch (e) {}
+    }
+    playbackItemName = playbackItemName || await resolvePlaybackItemName(env, request, matchedPrefix, targetUrls, report);
+
+    let watchSeconds = 0;
+    if (!report.isPaused && hasPreviousState && report.positionTicks > previousTicks) {
+        const positionDeltaSeconds = Math.floor((report.positionTicks - previousTicks) / EMBY_TICKS_PER_SECOND);
+        if (positionDeltaSeconds <= MAX_PROGRESS_INCREMENT_SECONDS) {
+            const elapsedSeconds = Number.isFinite(previousUpdatedAtMs) ? Math.max(0, Math.ceil((nowMs - previousUpdatedAtMs) / 1000)) : positionDeltaSeconds;
+            watchSeconds = Math.max(0, Math.min(positionDeltaSeconds, elapsedSeconds + 5));
+        }
+    }
+
+    const stmts = [
+        env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix)
+    ];
+
+    if (playbackItemId) {
+        stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO daily_unique_plays (prefix, date, item_id, first_play) VALUES (?, ?, ?, ?)`)
+            .bind(matchedPrefix, todayStr, playbackItemId, nowTime));
+        stmts.push(env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) SELECT ?, ?, 1 WHERE changes() > 0 ON CONFLICT(prefix, date) DO UPDATE SET count = count + excluded.count`)
+            .bind(matchedPrefix, todayStr));
+        stmts.push(...buildPlaybackItemNameStmts(env, matchedPrefix, playbackItemId, playbackItemName, nowTime));
+    }
+
+    const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
+    const rawCountry = request.headers.get("cf-ipcountry") || request.cf?.country || request.headers.get("x-vercel-ip-country") || request.headers.get("x-country-code") || '';
+    const clientCountry = rawCountry && rawCountry !== 'XX' && rawCountry !== 'T1' ? rawCountry : 'Unknown';
+    const clientRegion = String(request.cf?.region || request.headers.get('cf-region') || '').trim();
+    const clientCity = String(request.cf?.city || request.headers.get('cf-city') || '').trim();
+    const clientUa = request.headers.get("User-Agent") || "Unknown";
+    stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, region, city, ua, item_id, item_name, position_ticks, watch_seconds, playback_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, playbackItemId, playbackItemName, report.positionTicks || 0, watchSeconds, playbackStatus));
+    if (sessionKey) {
+        if (playbackStatus === 'stopped') {
+            stmts.push(env.DB.prepare(`DELETE FROM playback_progress_state WHERE prefix = ? AND session_key = ?`)
+                .bind(matchedPrefix, sessionKey));
+        } else {
+            stmts.push(env.DB.prepare(`INSERT INTO playback_progress_state (prefix, session_key, item_id, item_name, last_position_ticks, updated_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(prefix, session_key) DO UPDATE SET item_id = excluded.item_id, item_name = excluded.item_name, last_position_ticks = excluded.last_position_ticks, updated_at = excluded.updated_at`)
+                .bind(matchedPrefix, sessionKey, playbackItemId, playbackItemName, report.positionTicks, nowTime));
+        }
+    }
+
+    await env.DB.batch(stmts);
+    console.log('PlaybackProgress Recorded:', JSON.stringify({
+        prefix: matchedPrefix,
+        itemId: playbackItemId,
+        itemName: playbackItemName,
+        hasSession: !!sessionKey,
+        hasPreviousState,
+        previousTicks,
+        positionTicks: report.positionTicks,
+        isPaused: report.isPaused,
+        playbackStatus,
+        watchSeconds
+    }));
+}
+
 const BEIJING_OFFSET_MS = 8 * 3600000;
 const WATCH_ALERT_THRESHOLD_MS = 24 * 3600000;
 const TG_MESSAGE_LIMIT = 4096;
+const EMBY_TICKS_PER_SECOND = 10000000;
+const MAX_PROGRESS_INCREMENT_SECONDS = 120;
 
 // 作用：确保定时任务需要读取的表和字段存在。
 // 目的：避免首次部署后还没打开面板时，TG 日报因为缺少表结构直接失败。
@@ -2685,12 +2958,14 @@ async function ensureTgReportSchema(env) {
         CREATE TABLE IF NOT EXISTS routes (prefix TEXT PRIMARY KEY, target TEXT NOT NULL, remark TEXT DEFAULT '', last_play TEXT DEFAULT '', watch_report INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS request_stats (prefix TEXT, date TEXT, count INTEGER DEFAULT 0, PRIMARY KEY(prefix, date));
         CREATE TABLE IF NOT EXISTS daily_unique_plays (prefix TEXT, date TEXT, item_id TEXT, first_play DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, date, item_id));
-        CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '');
+        CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT DEFAULT '', region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '', position_ticks INTEGER DEFAULT 0, watch_seconds INTEGER DEFAULT 0, playback_status TEXT DEFAULT 'watching');
     `);
     const {
         results: routeColumns = []
     } = await env.DB.prepare(`PRAGMA table_info(routes)`).all();
     const existingColumns = new Set((routeColumns || []).map(column => column.name));
+    await ensurePlaybackProgressSchema(env);
+
     const requiredColumns = [
         ['remark', `ALTER TABLE routes ADD COLUMN remark TEXT DEFAULT ''`],
         ['last_play', `ALTER TABLE routes ADD COLUMN last_play TEXT DEFAULT ''`],
@@ -3289,6 +3564,7 @@ export default {
                 error: '未绑定 D1 数据库'
             });
             try {
+                await ensurePlaybackProgressSchema(env);
                 // 并发获取 24小时、7天、30天流量 (通过全新 GraphQL API 规避限制)
                 const [trafficToday, traffic7d, traffic30d] = await Promise.all([
                     getCFTraffic(env, 'today'),
@@ -3309,7 +3585,15 @@ export default {
                         MAX(v.region) as region,
                         MAX(v.city) as city,
                         MAX(v.ua) as ua,
-                        COUNT(*) * 10 as watch_seconds
+                        SUM(IFNULL(v.watch_seconds, 0)) as watch_seconds,
+                        COALESCE((
+                            SELECT l.playback_status
+                            FROM visitor_logs l
+                            WHERE l.prefix = v.prefix AND l.item_id = v.item_id
+                            ORDER BY l.timestamp DESC, l.id DESC
+                            LIMIT 1
+                        ), 'watching') as playback_status,
+                        CAST(strftime('%s', 'now') - strftime('%s', MAX(v.timestamp)) AS INTEGER) as idle_seconds
                     FROM visitor_logs v
                     LEFT JOIN playback_item_refs r ON r.prefix = v.prefix AND r.item_id = v.item_id
                     WHERE v.item_id != ''
@@ -3864,7 +4148,7 @@ export default {
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS playback_items (item_id TEXT PRIMARY KEY, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`);
             await env.DB.exec(`CREATE TABLE IF NOT EXISTS playback_item_refs (prefix TEXT, item_id TEXT, item_name TEXT DEFAULT '', updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(prefix, item_id))`);
             // 大数据记录核心表：访客日志
-            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '')`);
+            await env.DB.exec(`CREATE TABLE IF NOT EXISTS visitor_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, prefix TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, ip TEXT, country TEXT, region TEXT DEFAULT '', city TEXT DEFAULT '', ua TEXT, item_id TEXT DEFAULT '', item_name TEXT DEFAULT '', position_ticks INTEGER DEFAULT 0, watch_seconds INTEGER DEFAULT 0, playback_status TEXT DEFAULT 'watching')`);
 
             try {
                 await env.DB.exec(`ALTER TABLE routes ADD COLUMN mode TEXT DEFAULT 'off'`);
@@ -3902,6 +4186,7 @@ export default {
             try {
                 await env.DB.exec(`ALTER TABLE visitor_logs ADD COLUMN city TEXT DEFAULT ''`);
             } catch (e) {}
+            await ensurePlaybackProgressSchema(env);
 
             // 数据防爆清理策略：自动清理过去 7 天的精细日志
             try {
@@ -4207,60 +4492,21 @@ export default {
         // ==========================================
         // 2.7 防爆型精准日志拦截 (修复统计虚高：仅拦截进度上报)
         // ==========================================
+        const isPlaybackStartReport = /\/Sessions\/Playing\/?$/i.test(url.pathname);
         const isPlaybackProgressReport = /\/Sessions\/Playing\/Progress/i.test(url.pathname);
+        const isPlaybackStopReport = /\/Sessions\/Playing\/Stopped/i.test(url.pathname);
 
-        // 仅在 Emby/Jellyfin 进度上报时记录 "今日播放" 和 "最后活跃"
+        let playbackStartReport = null;
+        if (isPlaybackStartReport && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
+            playbackStartReport = await extractPlaybackProgressReport(request, url);
+        }
+        let playbackProgressReport = null;
         if (isPlaybackProgressReport && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
-            try {
-                const todayStr = new Date(Date.now() + 8 * 3600000).toISOString().split('T')[0];
-                const nowTime = new Date(Date.now() + 8 * 3600000).toISOString().replace('T', ' ').split('.')[0];
-                const playbackItemId = await extractPlaybackItemId(request, url);
-                const playbackUserId = await extractPlaybackUserId(request, url);
-                let playbackItemName = '';
-                if (playbackItemId) {
-                    try {
-                        const cachedRef = await env.DB.prepare(`SELECT item_name FROM playback_item_refs WHERE prefix = ? AND item_id = ?`).bind(matchedPrefix, playbackItemId).first();
-                        playbackItemName = String(cachedRef?.item_name || '').trim();
-                    } catch (e) {}
-                }
-                if (!playbackItemName && playbackItemId) {
-                    try {
-                        const cachedItem = await env.DB.prepare(`SELECT item_name FROM playback_items WHERE item_id = ?`).bind(playbackItemId).first();
-                        playbackItemName = String(cachedItem?.item_name || '').trim();
-                    } catch (e) {}
-                }
-                if (!playbackItemName && playbackUserId && playbackItemId) {
-                    playbackItemName = await fetchPlaybackItemNameByUser(targetUrls, playbackUserId, playbackItemId, request);
-                }
-
-                let stmts = [
-                    env.DB.prepare(`UPDATE routes SET last_play = ? WHERE prefix = ?`).bind(nowTime, matchedPrefix)
-                ];
-
-                if (playbackItemId) {
-                    stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO daily_unique_plays (prefix, date, item_id, first_play) VALUES (?, ?, ?, ?)`)
-                        .bind(matchedPrefix, todayStr, playbackItemId, nowTime));
-                    stmts.push(env.DB.prepare(`INSERT INTO request_stats (prefix, date, count) SELECT ?, ?, 1 WHERE changes() > 0 ON CONFLICT(prefix, date) DO UPDATE SET count = count + excluded.count`)
-                        .bind(matchedPrefix, todayStr));
-                    if (playbackItemName) {
-                        stmts.push(env.DB.prepare(`INSERT INTO playback_items (item_id, item_name, updated_at) VALUES (?, ?, ?) ON CONFLICT(item_id) DO UPDATE SET item_name = excluded.item_name, updated_at = excluded.updated_at`)
-                            .bind(playbackItemId, playbackItemName, nowTime));
-                        const refStmt = buildPlaybackItemRefStmt(env, matchedPrefix, playbackItemId, playbackItemName, nowTime);
-                        if (refStmt) stmts.push(refStmt);
-                    }
-                }
-
-                const clientIp = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "Unknown";
-                const rawCountry = request.headers.get("cf-ipcountry") || request.cf?.country || request.headers.get("x-vercel-ip-country") || request.headers.get("x-country-code") || '';
-                const clientCountry = rawCountry && rawCountry !== 'XX' && rawCountry !== 'T1' ? rawCountry : 'Unknown';
-                const clientRegion = String(request.cf?.region || request.headers.get('cf-region') || '').trim();
-                const clientCity = String(request.cf?.city || request.headers.get('cf-city') || '').trim();
-                const clientUa = request.headers.get("User-Agent") || "Unknown";
-                stmts.push(env.DB.prepare(`INSERT INTO visitor_logs (prefix, ip, country, region, city, ua, item_id, item_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-                    .bind(matchedPrefix, clientIp, clientCountry, clientRegion, clientCity, clientUa, playbackItemId, playbackItemName));
-
-                ctx.waitUntil(env.DB.batch(stmts));
-            } catch (e) {}
+            playbackProgressReport = await extractPlaybackProgressReport(request, url);
+        }
+        let playbackStopReport = null;
+        if (isPlaybackStopReport && matchedPrefix && env.DB && ctx && ctx.waitUntil) {
+            playbackStopReport = await extractPlaybackProgressReport(request, url);
         }
 
         // ==========================================
@@ -4383,6 +4629,50 @@ export default {
 
         const responseHeaders = new Headers(finalResponse.headers);
         rewriteSetCookieForProxy(responseHeaders);
+
+        if (playbackStartReport) {
+            const reportAccepted = isSuccessfulPlaybackReportResponse(finalResponse.status);
+            console.log('PlaybackStart Intercept:', JSON.stringify({
+                prefix: matchedPrefix,
+                status: finalResponse.status,
+                accepted: reportAccepted,
+                itemId: playbackStartReport.itemId,
+                sessionId: playbackStartReport.sessionId,
+                positionTicks: playbackStartReport.positionTicks
+            }));
+            if (reportAccepted) {
+                ctx.waitUntil(recordPlaybackStartReport(env, request, matchedPrefix, targetUrls, playbackStartReport).catch(e => console.log('PlaybackStart Record Error:', e.message)));
+            }
+        }
+        if (playbackProgressReport) {
+            const reportAccepted = isSuccessfulPlaybackReportResponse(finalResponse.status);
+            console.log('PlaybackProgress Intercept:', JSON.stringify({
+                prefix: matchedPrefix,
+                status: finalResponse.status,
+                accepted: reportAccepted,
+                itemId: playbackProgressReport.itemId,
+                sessionId: playbackProgressReport.sessionId,
+                positionTicks: playbackProgressReport.positionTicks,
+                isPaused: playbackProgressReport.isPaused
+            }));
+            if (reportAccepted) {
+                ctx.waitUntil(recordPlaybackProgressReport(env, request, matchedPrefix, targetUrls, playbackProgressReport).catch(e => console.log('PlaybackProgress Record Error:', e.message)));
+            }
+        }
+        if (playbackStopReport) {
+            const reportAccepted = isSuccessfulPlaybackReportResponse(finalResponse.status);
+            console.log('PlaybackStop Intercept:', JSON.stringify({
+                prefix: matchedPrefix,
+                status: finalResponse.status,
+                accepted: reportAccepted,
+                itemId: playbackStopReport.itemId,
+                sessionId: playbackStopReport.sessionId,
+                positionTicks: playbackStopReport.positionTicks
+            }));
+            if (reportAccepted) {
+                ctx.waitUntil(recordPlaybackProgressReport(env, request, matchedPrefix, targetUrls, playbackStopReport, 'stopped').catch(e => console.log('PlaybackStop Record Error:', e.message)));
+            }
+        }
 
         // 统一前缀变量，确保绝对安全，不会抛出未定义错误
         // 假设你前面获取路由节点的变量叫 matchedPrefix，如果有值就带上斜杠
