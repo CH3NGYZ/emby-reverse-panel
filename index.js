@@ -1,6 +1,6 @@
 // VERSION: 2.3.7
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.7";
+const CURRENT_VERSION = "2.3.8";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
     'ctyunxs.cn', // 天翼云
     '123pan.cn', // 123pan
@@ -241,7 +241,7 @@ const LOGIN_UI = `
         function showToast(msg) {
             const t = document.getElementById('toast');
             t.textContent = msg; t.classList.add('show');
-            setTimeout(() => t.classList.remove('show'), 2000);
+            setTimeout(() => t.classList.remove('show'), 5000);
         }
         function login() {
             const token = document.getElementById('tokenInput').value.trim();
@@ -1909,7 +1909,7 @@ function renderWatchReportPanel(routes) {
         // 目的：统一处理测速失败场景，并阻止无效节点参与 DNS 更新。
         function markTimeout(latTd, spdTd, tr) {
             latTd.textContent = '超时抛弃'; latTd.setAttribute('data-ms', 9999); latTd.style.color = '#ff3b30';
-            spdTd.textContent = '❌ 超时 (>2000ms)'; spdTd.style.color = '#ff3b30';
+            spdTd.textContent = '❌ 超时 (>5000ms)'; spdTd.style.color = '#ff3b30';
             const cb = tr.querySelector('.row-checkbox');
             if(cb) { cb.disabled = true; cb.title = '不可用的节点无法被勾选'; }
         }
@@ -1929,10 +1929,10 @@ function renderWatchReportPanel(routes) {
             }
             const start = performance.now();
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000); 
+            const timeoutId = setTimeout(() => controller.abort(), 5000); 
             const processResult = () => {
                 const rawLatency = Math.round(performance.now() - start);
-                if (rawLatency > 2000) return markTimeout(latTd, spdTd, tr);
+                if (rawLatency > 5000) return markTimeout(latTd, spdTd, tr);
                 let displayLatency = rawLatency;
                 if (!isIPv6 && !isDomain) {
                     if (rawLatency >= 500) { displayLatency = rawLatency - 400; } 
@@ -1998,7 +1998,7 @@ function renderWatchReportPanel(routes) {
             let topIps = [];
             for(let i = 0; i < rows.length; i++) {
                 const ms = parseInt(rows[i].querySelector('.latency').getAttribute('data-ms'));
-                if(ms < 2000) topIps.push(rows[i].querySelector('.ip-text').textContent);
+                if(ms < 5000) topIps.push(rows[i].querySelector('.ip-text').textContent);
                 if(topIps.length === 3) break;
             }
             if(topIps.length === 0) return showToast('⚠️ 没找到可用节点，请先测速');
@@ -3837,7 +3837,7 @@ export default {
             const start = Date.now();
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 await fetch(target + '/', {
                     method: 'HEAD',
                     signal: controller.signal
