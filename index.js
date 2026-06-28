@@ -1,4 +1,4 @@
-// VERSION: 2.3.7
+// VERSION: 2.3.8
 // 🟢 面板核心配置区 (放在最顶端方便修改)
 const CURRENT_VERSION = "2.3.8";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
