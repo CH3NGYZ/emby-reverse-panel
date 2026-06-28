@@ -3052,6 +3052,25 @@ async function sendTgText(env, chatId, text) {
     return tgData;
 }
 
+function getTgNotifyChatId(env) {
+    return env.TG_CHAT_ID;
+}
+
+async function sendTgRedirectNotice(env, info) {
+    const chatId = getTgNotifyChatId(env);
+    if (!chatId) return null;
+    const text = [
+        '302 redirect detected',
+        `prefix: ${info.prefix || '-'}`,
+        `status: ${info.status}`,
+        `request: ${info.requestUrl || '-'}`,
+        `target: ${info.targetUrl || '-'}`,
+        `location: ${info.location || '-'}`,
+        `redirected: ${info.redirectedLocation || '-'}`
+    ].join('\n');
+    return sendTgText(env, chatId, text);
+}
+
 function parsePositiveDays(value) {
     const days = parseInt(value, 10);
     return Number.isFinite(days) && days > 0 ? days : 0;
@@ -4850,6 +4869,16 @@ export default {
             const rewrittenLocation = rewriteRedirectLocation(location, finalTargetUrl, targetOrigins, proxyOrigin, safePrefix);
             if (rewrittenLocation !== location) {
                 responseHeaders.set('Location', rewrittenLocation);
+            }
+            if (finalResponse.status === 302 && ctx && ctx.waitUntil && location) {
+                ctx.waitUntil(sendTgRedirectNotice(env, {
+                    prefix: matchedPrefix,
+                    status: finalResponse.status,
+                    requestUrl: request.url,
+                    targetUrl: finalTargetUrl ? finalTargetUrl.toString() : '',
+                    location,
+                    redirectedLocation: rewrittenLocation
+                }).catch(e => console.log('TG Redirect Notice Error:', e.message)));
             }
         }
 
