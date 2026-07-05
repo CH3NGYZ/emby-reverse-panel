@@ -1,9 +1,10 @@
-// VERSION: 2.3.8
+// VERSION: 2.3.9
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.3.8";
+const CURRENT_VERSION = "2.3.9";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
     'ctyunxs.cn', // 天翼云
     '123pan.cn', // 123pan
+    'media.emby.pro', //非越的emby源
     // 以下未经测试
     '123pan.com',
     '123684.com',
@@ -2986,7 +2987,8 @@ async function recordPlaybackProgressReport(env, request, matchedPrefix, targetU
 }
 
 const BEIJING_OFFSET_MS = 8 * 3600000;
-const WATCH_ALERT_THRESHOLD_MS = 24 * 3600000;
+const WATCH_ALERT_THRESHOLD_HOURS = 72;
+const WATCH_ALERT_THRESHOLD_MS = WATCH_ALERT_THRESHOLD_HOURS * 3600000;
 const TG_MESSAGE_LIMIT = 4096;
 const EMBY_TICKS_PER_SECOND = 10000000;
 const MAX_PROGRESS_INCREMENT_SECONDS = 120;
@@ -3144,7 +3146,7 @@ function getRouteDisplayName(route) {
     return String(route.remark || route.prefix || '未命名节点').trim();
 }
 
-// 作用：生成保号小于 24 小时的 TG 提醒文本。
+// 作用：生成保号小于提醒阈值的 TG 提醒文本。
 // 目的：把即将到期、已经到期、未记录首播的节点集中推给管理员。
 async function buildTgWatchReport(env, schemaReady = false) {
     if (!schemaReady) await ensureTgReportSchema(env);
@@ -3205,7 +3207,7 @@ async function buildTgWatchReport(env, schemaReady = false) {
             lines.push(`还有 ${urgentRoutes.length - 20} 个未展示，请登录面板查看。`);
         }
     } else {
-        lines.push('', '✅ 暂无 24 小时内到期节点');
+        lines.push('', `✅ 暂无 ${WATCH_ALERT_THRESHOLD_HOURS} 小时内到期节点`);
     }
 
     if (noPlayRoutes.length > 0) {
