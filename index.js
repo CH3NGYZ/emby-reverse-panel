@@ -1,11 +1,12 @@
-// VERSION: 2.4.0
+// VERSION: 2.4.1
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.4.0";
+const CURRENT_VERSION = "2.4.1";
 const DIRECT_REDIRECT_HOST_SUFFIXES = [
     'ctyunxs.cn', // 天翼云
     '123pan.cn', // 123pan
     'media.emby.pro', //非越的emby源
     'mini189.cn', //大西瓜用的mini189
+    'embymv.link', //peach的emby推流源
     // 以下未经测试
     '123pan.com',
     '123684.com',
