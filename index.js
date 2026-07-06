@@ -1,6 +1,6 @@
-// VERSION: 2.4.3
+// VERSION: 2.4.4
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.4.3";
+const CURRENT_VERSION = "2.4.4";
 const DIRECT_REDIRECT_HOST_DEFAULTS = [
     { suffix: 'ctyunxs.cn', remark: '天翼云' },
     { suffix: '123pan.cn', remark: '123pan' },
@@ -480,8 +480,14 @@ const HTML_UI = `
             <div id="tab-direct302" class="tab-panel">
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
-                        <h2 style="margin:0; font-size:18px;">302 网址白名单</h2>
-                        <span style="font-size:13px; color:var(--text-sec);">命中后不改写 Location，直接跳转源站链接</span>
+                        <div>
+                            <h2 style="margin:0; font-size:18px;">302 网址白名单</h2>
+                            <div style="margin-top:6px; font-size:13px; color:var(--text-sec);">命中后不改写 Location，直接跳转源站链接</div>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button type="button" class="btn-submit" onclick="exportDirectRedirectHosts()" style="background:#5856d6; padding: 8px 16px; font-size: 13px;">📦 导出白名单</button>
+                            <button type="button" class="btn-submit" onclick="importDirectRedirectHosts()" style="background:#ff9500; padding: 8px 16px; font-size: 13px;">📥 导入白名单</button>
+                        </div>
                     </div>
                     <form id="directHostForm" style="display:flex; flex-direction:column; gap:12px; margin-bottom:16px;">
                         <input type="hidden" id="directHostOldSuffix" value="">
@@ -998,6 +1004,7 @@ const HTML_UI = `
                         '<td>' + (remark || '<span style="color:var(--text-sec);">-</span>') + '</td>' +
                         '<td><span style="color:' + (enabled ? '#34c759' : '#ff9500') + '; font-weight:600;">' + (enabled ? '已启用' : '已停用') + '</span></td>' +
                         '<td style="text-align:right;">' +
+                        '<button class="btn-edit" style="padding:7px 12px; background:' + (enabled ? '#ff9500' : '#34c759') + ';" onclick="toggleDirectRedirectHost(\\'' + suffix + '\\')">' + (enabled ? '禁用' : '启用') + '</button>' +
                         '<button class="btn-edit" style="padding:7px 12px;" onclick="editDirectRedirectHost(\\'' + suffix + '\\')">编辑</button>' +
                         '<button class="btn-del" style="padding:7px 12px;" onclick="deleteDirectRedirectHost(\\'' + suffix + '\\')">删除</button>' +
                         '</td>' +
@@ -1028,6 +1035,29 @@ const HTML_UI = `
             document.getElementById('directHostSuffix').focus();
         }
 
+        async function toggleDirectRedirectHost(suffix) {
+            const host = directRedirectHostsData.find(item => item.suffix === suffix);
+            if (!host) return showToast('❌ 规则不存在，请刷新后重试');
+            const nextEnabled = Number(host.enabled) === 0;
+            try {
+                const res = await fetch('/api/direct-redirect-hosts', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        oldSuffix: host.suffix,
+                        suffix: host.suffix,
+                        remark: host.remark || '',
+                        enabled: nextEnabled
+                    })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || '切换失败');
+                showToast(nextEnabled ? '✅ 规则已启用' : '✅ 规则已禁用');
+                loadDirectRedirectHosts();
+            } catch (err) {
+                showToast('❌ 切换失败: ' + err.message);
+            }
+        }
+
         async function deleteDirectRedirectHost(suffix) {
             if (!confirm('确定删除直连后缀 ' + suffix + ' ?')) return;
             try {
@@ -1040,6 +1070,73 @@ const HTML_UI = `
             } catch (err) {
                 showToast('❌ 删除失败: ' + err.message);
             }
+        }
+
+        async function exportDirectRedirectHosts() {
+            try {
+                const res = await fetch('/api/direct-redirect-hosts');
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || '读取失败');
+                const hosts = (Array.isArray(data.hosts) ? data.hosts : []).map(host => ({
+                    suffix: host.suffix || '',
+                    remark: host.remark || '',
+                    enabled: Number(host.enabled) !== 0
+                })).filter(host => host.suffix);
+                const blob = new Blob([JSON.stringify(hosts, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'emby_302_whitelist_backup.json';
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('✅ 302 白名单已导出');
+            } catch (err) {
+                showToast('❌ 导出失败: ' + err.message);
+            }
+        }
+
+        function importDirectRedirectHosts() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        const hosts = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.hosts) ? parsed.hosts : []);
+                        if (hosts.length === 0) throw new Error('文件中没有可导入的白名单');
+
+                        let imported = 0;
+                        for (const host of hosts) {
+                            const suffix = String(host?.suffix || '').trim();
+                            if (!suffix) continue;
+                            const res = await fetch('/api/direct-redirect-hosts', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    suffix,
+                                    remark: String(host?.remark || '').trim(),
+                                    enabled: host?.enabled !== false && host?.enabled !== 0 && host?.enabled !== '0'
+                                })
+                            });
+                            const data = await res.json();
+                            if (!data.success) throw new Error(suffix + ': ' + (data.error || '导入失败'));
+                            imported++;
+                        }
+
+                        if (imported === 0) throw new Error('没有有效的白名单条目');
+                        showToast('✅ 已导入 ' + imported + ' 条 302 白名单');
+                        resetDirectRedirectHostForm();
+                        loadDirectRedirectHosts();
+                    } catch (err) {
+                        showToast('❌ 导入失败: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
         }
 
         document.getElementById('directHostForm').onsubmit = async (e) => {
