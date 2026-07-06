@@ -1,6 +1,6 @@
-// VERSION: 2.4.4
+// VERSION: 2.4.5
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.4.4";
+const CURRENT_VERSION = "2.4.5";
 const DIRECT_REDIRECT_HOST_DEFAULTS = [
     { suffix: 'ctyunxs.cn', remark: '天翼云' },
     { suffix: '123pan.cn', remark: '123pan' },
@@ -518,6 +518,30 @@ const HTML_UI = `
                         </table>
                     </div>
                 </div>
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 style="margin:0; font-size:18px;">302 跳转记录</h2>
+                            <div style="margin-top:6px; font-size:13px; color:var(--text-sec);">按 Location 去重，仅保留最近 10 条。</div>
+                        </div>
+                        <button type="button" class="btn-submit" onclick="loadRedirect302Records()" style="background:#32ade6; padding: 8px 16px; font-size: 13px;">🔄 刷新记录</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>最近时间</th>
+                                    <th>节点</th>
+                                    <th>Location</th>
+                                    <th>改写后</th>
+                                </tr>
+                            </thead>
+                            <tbody id="redirect302RecordList">
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-sec); padding:20px;">读取记录中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
 
             <div id="tab-dns" class="tab-panel">
@@ -1012,6 +1036,36 @@ const HTML_UI = `
                 }).join('');
             } catch (err) {
                 directRedirectHostsData = [];
+                list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#ff3b30; padding:20px;">读取失败: ' + escapeHtml(err.message) + '</td></tr>';
+            }
+        }
+
+        async function loadRedirect302Records() {
+            const list = document.getElementById('redirect302RecordList');
+            if (!list) return;
+            try {
+                const res = await fetch('/api/redirect-302-records');
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || '读取失败');
+                const records = Array.isArray(data.records) ? data.records : [];
+                if (records.length === 0) {
+                    list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-sec); padding:20px;">暂无 302 跳转记录</td></tr>';
+                    return;
+                }
+
+                list.innerHTML = records.map(record => {
+                    const prefix = record.prefix ? '/' + escapeHtml(record.prefix) : '-';
+                    const location = escapeHtml(record.location || '');
+                    const redirectedLocation = escapeHtml(record.redirected_location || '');
+                    const updatedAt = escapeHtml(formatDisplayDateTime(record.updated_at || record.created_at));
+                    return '<tr>' +
+                        '<td style="white-space:nowrap;">' + updatedAt + '</td>' +
+                        '<td style="white-space:nowrap;">' + prefix + '</td>' +
+                        '<td style="max-width:360px; word-break:break-all;">' + (location || '-') + '</td>' +
+                        '<td style="max-width:360px; word-break:break-all;">' + (redirectedLocation || '-') + '</td>' +
+                        '</tr>';
+                }).join('');
+            } catch (err) {
                 list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#ff3b30; padding:20px;">读取失败: ' + escapeHtml(err.message) + '</td></tr>';
             }
         }
@@ -2257,6 +2311,7 @@ function renderWatchReportPanel(routes) {
         // 初始化加载
         loadIcons().then(() => {
             loadDirectRedirectHosts();
+            loadRedirect302Records();
             load();
             loadDNS();
         });
@@ -3223,7 +3278,7 @@ const EMBY_TICKS_PER_SECOND = 10000000;
 const MAX_PROGRESS_INCREMENT_SECONDS = 120;
 const DIRECT_REDIRECT_HOST_SEEDED_KEY = 'direct_redirect_hosts_seeded';
 const DIRECT_REDIRECT_HOST_SEED_MARKER = '__seeded__';
-const REDIRECT_NOTICE_DEDUP_HOURS = 24;
+const REDIRECT_302_RECORD_LIMIT = 10;
 
 function normalizeDirectRedirectSuffix(value) {
     let suffix = String(value || '').trim().toLowerCase();
@@ -3267,26 +3322,33 @@ async function sha256Hex(text) {
     return Array.from(new Uint8Array(hashBuffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function ensureRedirectNoticeDedupSchema(env) {
+async function ensureRedirect302RecordSchema(env) {
     if (!env?.DB) return;
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS redirect_notice_dedup (location_hash TEXT PRIMARY KEY, location TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS redirect_302_records (location_hash TEXT PRIMARY KEY, prefix TEXT, status INTEGER DEFAULT 302, request_url TEXT, target_url TEXT, location TEXT NOT NULL, redirected_location TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
 }
 
-async function claimRedirectNoticeLocation(env, location) {
-    if (!env?.DB || !location) return true;
+async function recordRedirect302AndClaimNotice(env, info) {
+    if (!env?.DB || !info?.location) return true;
     try {
-        await ensureRedirectNoticeDedupSchema(env);
-        await env.DB.prepare(`DELETE FROM redirect_notice_dedup WHERE created_at < datetime('now', ?)`)
-            .bind(`-${REDIRECT_NOTICE_DEDUP_HOURS} hours`)
-            .run();
-        const locationHash = await sha256Hex(location);
+        await ensureRedirect302RecordSchema(env);
+        const locationHash = await sha256Hex(info.location);
         const result = await env.DB.prepare(`
-            INSERT OR IGNORE INTO redirect_notice_dedup (location_hash, location, created_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-        `).bind(locationHash, location).run();
-        return Number(result?.meta?.changes || 0) > 0;
+            INSERT OR IGNORE INTO redirect_302_records
+            (location_hash, prefix, status, request_url, target_url, location, redirected_location, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(locationHash, info.prefix || '', info.status || 302, info.requestUrl || '', info.targetUrl || '', info.location || '', info.redirectedLocation || '').run();
+        const inserted = Number(result?.meta?.changes || 0) > 0;
+        if (inserted) {
+            await env.DB.prepare(`
+                DELETE FROM redirect_302_records
+                WHERE location_hash NOT IN (
+                    SELECT location_hash FROM redirect_302_records ORDER BY datetime(created_at) DESC, location_hash DESC LIMIT ?
+                )
+            `).bind(REDIRECT_302_RECORD_LIMIT).run();
+        }
+        return inserted;
     } catch (e) {
-        console.log('Redirect Notice Dedup Error:', e.message);
+        console.log('Redirect302 Record Error:', e.message);
         return true;
     }
 }
@@ -3357,10 +3419,10 @@ function getTgNotifyChatId(env) {
 }
 
 async function sendTgRedirectNotice(env, info) {
+    const claimed = await recordRedirect302AndClaimNotice(env, info);
+    if (!claimed) return null;
     const chatId = getTgNotifyChatId(env);
     if (!chatId) return null;
-    const claimed = await claimRedirectNoticeLocation(env, info.location);
-    if (!claimed) return null;
     const text = [
         '302 redirect detected',
         `prefix: ${info.prefix || '-'}`,
@@ -4371,6 +4433,35 @@ export default {
         // ==========================================
         // 2.5 数据库路由管理 API 
         // ==========================================
+        if (url.pathname === '/api/redirect-302-records' && request.method === 'GET') {
+            if (!env.DB) return Response.json({
+                success: false,
+                error: "未绑定 DB"
+            }, {
+                status: 500
+            });
+            try {
+                await ensureRedirect302RecordSchema(env);
+                const { results = [] } = await env.DB.prepare(`
+                    SELECT prefix, status, request_url, target_url, location, redirected_location, created_at, updated_at
+                    FROM redirect_302_records
+                    ORDER BY datetime(created_at) DESC, location_hash DESC
+                    LIMIT ?
+                `).bind(REDIRECT_302_RECORD_LIMIT).all();
+                return Response.json({
+                    success: true,
+                    records: results || []
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                }, {
+                    status: 500
+                });
+            }
+        }
+
         if (url.pathname === '/api/direct-redirect-hosts') {
             if (!env.DB) return Response.json({
                 success: false,
