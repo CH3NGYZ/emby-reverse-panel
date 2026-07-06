@@ -1,24 +1,14 @@
-// VERSION: 2.4.2
+// VERSION: 2.4.3
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.4.2";
-const DIRECT_REDIRECT_HOST_SUFFIXES = [
-    'ctyunxs.cn', // 天翼云
-    '123pan.cn', // 123pan
-    'media.emby.pro', //非越的emby源
-    'mini189.cn', //大西瓜用的mini189
-    'tjtele.com', //大西瓜用的tjtele
-    'embymv.link', //peach的emby推流源\
-    // 以下未经测试
-    '123pan.com',
-    '123684.com',
-    '123865.com',
-    '115.com',
-    '115cdn.com',
-    'anxia.com',
-    '189.cn',
-    'cloud.189.cn',
-    'ctfile.com'
+const CURRENT_VERSION = "2.4.3";
+const DIRECT_REDIRECT_HOST_DEFAULTS = [
+    { suffix: 'ctyunxs.cn', remark: '天翼云' },
+    { suffix: '123pan.cn', remark: '123pan' },
+    { suffix: 'media.emby.pro', remark: '非越 Emby 源' },
+    { suffix: 'mini189.cn', remark: '大西瓜 mini189' },
+    { suffix: 'tjtele.com', remark: '大西瓜 tjtele' },
 ];
+const DIRECT_REDIRECT_HOST_SUFFIXES = DIRECT_REDIRECT_HOST_DEFAULTS.map(item => item.suffix);
 const GITHUB_RAW_URL = "https://raw.githubusercontent.com/CH3NGYZ/emby-reverse-panel/main/index.js";
 
 // ==========================================
@@ -301,6 +291,7 @@ const HTML_UI = `
                 <button type="button" class="tab-btn active" data-tab="watch" onclick="switchTab('watch', this)"><span class="tab-emoji">🛡️</span><span class="tab-text">保号</span></button>
                 <button type="button" class="tab-btn" data-tab="dashboard" onclick="switchTab('dashboard', this)"><span class="tab-emoji">📊</span><span class="tab-text">大屏</span></button>
                 <button type="button" class="tab-btn" data-tab="proxy" onclick="switchTab('proxy', this)"><span class="tab-emoji">🔁</span><span class="tab-text">反代</span></button>
+                <button type="button" class="tab-btn" data-tab="direct302" onclick="switchTab('direct302', this)"><span class="tab-emoji">↪️</span><span class="tab-text">302白名单</span></button>
                 <button type="button" class="tab-btn" data-tab="dns" onclick="switchTab('dns', this)"><span class="tab-emoji">🌐</span><span class="tab-text">DNS</span></button>
                 <button type="button" class="tab-btn" data-tab="settings" onclick="switchTab('settings', this)"><span class="tab-emoji">⚙️</span><span class="tab-text">设置</span></button>
             </div>
@@ -486,6 +477,43 @@ const HTML_UI = `
                 </div>
             </div>
 
+            <div id="tab-direct302" class="tab-panel">
+                <div class="card">
+                    <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+                        <h2 style="margin:0; font-size:18px;">302 网址白名单</h2>
+                        <span style="font-size:13px; color:var(--text-sec);">命中后不改写 Location，直接跳转源站链接</span>
+                    </div>
+                    <form id="directHostForm" style="display:flex; flex-direction:column; gap:12px; margin-bottom:16px;">
+                        <input type="hidden" id="directHostOldSuffix" value="">
+                        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+                            <input type="text" id="directHostSuffix" placeholder="域名后缀 (如: 123pan.cn)" style="padding:12px 16px; border:1px solid var(--border); border-radius:10px; background:var(--card); flex:1;" required>
+                            <input type="text" id="directHostRemark" placeholder="备注 (如: 123pan 直连)" style="padding:12px 16px; border:1px solid var(--border); border-radius:10px; background:var(--card); flex:1;">
+                            <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:500; cursor:pointer;">
+                                <input type="checkbox" id="directHostEnabled" class="ip-checkbox" checked>
+                                启用
+                            </label>
+                            <button type="submit" id="directHostSubmitBtn" class="btn-submit" style="padding:12px 18px;">保存规则</button>
+                            <button type="button" onclick="resetDirectRedirectHostForm()" style="padding:12px 18px; border:none; border-radius:10px; background:#8e8e93; color:#fff; cursor:pointer; font-weight:600;">取消编辑</button>
+                        </div>
+                    </form>
+                    <div class="table-wrapper">
+                        <table style="width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>域名后缀</th>
+                                    <th>备注</th>
+                                    <th>状态</th>
+                                    <th style="text-align:right;">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="directHostList">
+                                <tr><td colspan="4" style="text-align:center; color:var(--text-sec); padding:20px;">读取规则中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
             <div id="tab-dns" class="tab-panel">
                 <div class="card">
                     <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
@@ -607,11 +635,21 @@ const HTML_UI = `
         const DEFAULT_ICON_URL = 'https://emby-icon.vercel.app/TFEL-Emby.json';
         let globalIcons = [];
         let proxyNodesForPing = [];
+        let directRedirectHostsData = [];
         let sortableInstance = null;
         let trendChartInstance = null;
         let locationChartInstance = null;
         let bandwidthPendingCount = 0;
 
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[ch]));
+        }
 
         // 设置 Chart.js 响应暗色模式
         function updateChartColors() {
@@ -936,6 +974,96 @@ const HTML_UI = `
                 card.style.display = searchStr.includes(filterText) ? 'flex' : 'none';
             });
         }
+
+        async function loadDirectRedirectHosts() {
+            const list = document.getElementById('directHostList');
+            if (!list) return;
+            try {
+                const res = await fetch('/api/direct-redirect-hosts');
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || '读取失败');
+                directRedirectHostsData = Array.isArray(data.hosts) ? data.hosts : [];
+
+                if (directRedirectHostsData.length === 0) {
+                    list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-sec); padding:20px;">暂无直连后缀规则</td></tr>';
+                    return;
+                }
+
+                list.innerHTML = directRedirectHostsData.map(host => {
+                    const enabled = Number(host.enabled) !== 0;
+                    const suffix = escapeHtml(host.suffix);
+                    const remark = escapeHtml(host.remark || '');
+                    return '<tr>' +
+                        '<td style="font-weight:700;">' + suffix + '</td>' +
+                        '<td>' + (remark || '<span style="color:var(--text-sec);">-</span>') + '</td>' +
+                        '<td><span style="color:' + (enabled ? '#34c759' : '#ff9500') + '; font-weight:600;">' + (enabled ? '已启用' : '已停用') + '</span></td>' +
+                        '<td style="text-align:right;">' +
+                        '<button class="btn-edit" style="padding:7px 12px;" onclick="editDirectRedirectHost(\\'' + suffix + '\\')">编辑</button>' +
+                        '<button class="btn-del" style="padding:7px 12px;" onclick="deleteDirectRedirectHost(\\'' + suffix + '\\')">删除</button>' +
+                        '</td>' +
+                        '</tr>';
+                }).join('');
+            } catch (err) {
+                directRedirectHostsData = [];
+                list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#ff3b30; padding:20px;">读取失败: ' + escapeHtml(err.message) + '</td></tr>';
+            }
+        }
+
+        function resetDirectRedirectHostForm() {
+            document.getElementById('directHostOldSuffix').value = '';
+            document.getElementById('directHostSuffix').value = '';
+            document.getElementById('directHostRemark').value = '';
+            document.getElementById('directHostEnabled').checked = true;
+            document.getElementById('directHostSubmitBtn').textContent = '保存规则';
+        }
+
+        function editDirectRedirectHost(suffix) {
+            const host = directRedirectHostsData.find(item => item.suffix === suffix);
+            if (!host) return showToast('❌ 规则不存在，请刷新后重试');
+            document.getElementById('directHostOldSuffix').value = host.suffix;
+            document.getElementById('directHostSuffix').value = host.suffix;
+            document.getElementById('directHostRemark').value = host.remark || '';
+            document.getElementById('directHostEnabled').checked = Number(host.enabled) !== 0;
+            document.getElementById('directHostSubmitBtn').textContent = '保存修改';
+            document.getElementById('directHostSuffix').focus();
+        }
+
+        async function deleteDirectRedirectHost(suffix) {
+            if (!confirm('确定删除直连后缀 ' + suffix + ' ?')) return;
+            try {
+                const res = await fetch('/api/direct-redirect-hosts?suffix=' + encodeURIComponent(suffix), { method: 'DELETE' });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || '删除失败');
+                showToast('✅ 规则已删除');
+                resetDirectRedirectHostForm();
+                loadDirectRedirectHosts();
+            } catch (err) {
+                showToast('❌ 删除失败: ' + err.message);
+            }
+        }
+
+        document.getElementById('directHostForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const oldSuffix = document.getElementById('directHostOldSuffix').value.trim();
+            const suffix = document.getElementById('directHostSuffix').value.trim();
+            const remark = document.getElementById('directHostRemark').value.trim();
+            const enabled = document.getElementById('directHostEnabled').checked;
+            if (!suffix) return showToast('❌ 请填写域名后缀');
+
+            try {
+                const res = await fetch('/api/direct-redirect-hosts', {
+                    method: 'POST',
+                    body: JSON.stringify({ oldSuffix, suffix, remark, enabled })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || '保存失败');
+                showToast('✅ 规则已保存');
+                resetDirectRedirectHostForm();
+                loadDirectRedirectHosts();
+            } catch (err) {
+                showToast('❌ 保存失败: ' + err.message);
+            }
+        };
 
         // 作用：把保号天数字段转换成合法正整数。
         // 目的：统一处理空值、非法值和非正数，避免倒计时计算异常。
@@ -2031,6 +2159,7 @@ function renderWatchReportPanel(routes) {
 
         // 初始化加载
         loadIcons().then(() => {
+            loadDirectRedirectHosts();
             load();
             loadDNS();
         });
@@ -2995,6 +3124,75 @@ const WATCH_ALERT_THRESHOLD_MS = WATCH_ALERT_THRESHOLD_HOURS * 3600000;
 const TG_MESSAGE_LIMIT = 4096;
 const EMBY_TICKS_PER_SECOND = 10000000;
 const MAX_PROGRESS_INCREMENT_SECONDS = 120;
+const DIRECT_REDIRECT_HOST_SEEDED_KEY = 'direct_redirect_hosts_seeded';
+const DIRECT_REDIRECT_HOST_SEED_MARKER = '__seeded__';
+const REDIRECT_NOTICE_DEDUP_HOURS = 24;
+
+function normalizeDirectRedirectSuffix(value) {
+    let suffix = String(value || '').trim().toLowerCase();
+    suffix = suffix.replace(/^https?:\/\//i, '').replace(/^\/\//, '');
+    suffix = suffix.split('/')[0].split('?')[0].split('#')[0];
+    suffix = suffix.replace(/^\*\./, '').replace(/^\.+|\.+$/g, '');
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(suffix)) {
+        throw new Error('域名后缀格式不正确');
+    }
+    return suffix;
+}
+
+async function ensureDirectRedirectHostSchema(env) {
+    if (!env?.DB) return;
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS direct_redirect_hosts (suffix TEXT PRIMARY KEY, remark TEXT, enabled INTEGER NOT NULL DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
+    const seeded = await env.DB.prepare(`SELECT suffix FROM direct_redirect_hosts WHERE suffix = ?`).bind(DIRECT_REDIRECT_HOST_SEED_MARKER).first();
+    if (seeded) return;
+
+    const stmts = DIRECT_REDIRECT_HOST_DEFAULTS.map(item => env.DB.prepare(`INSERT OR IGNORE INTO direct_redirect_hosts (suffix, remark, enabled) VALUES (?, ?, 1)`).bind(item.suffix, item.remark || ''));
+    stmts.push(env.DB.prepare(`INSERT OR REPLACE INTO direct_redirect_hosts (suffix, remark, enabled) VALUES (?, ?, 0)`).bind(DIRECT_REDIRECT_HOST_SEED_MARKER, DIRECT_REDIRECT_HOST_SEEDED_KEY));
+    await env.DB.batch(stmts);
+}
+
+async function getDirectRedirectHostSuffixes(env) {
+    if (!env?.DB) return DIRECT_REDIRECT_HOST_SUFFIXES;
+    try {
+        await ensureDirectRedirectHostSchema(env);
+        const { results = [] } = await env.DB.prepare(`
+            SELECT suffix FROM direct_redirect_hosts WHERE enabled = 1 AND suffix != ? ORDER BY suffix ASC
+        `).bind(DIRECT_REDIRECT_HOST_SEED_MARKER).all();
+        return (results || []).map(row => String(row.suffix || '').trim().toLowerCase()).filter(Boolean);
+    } catch (e) {
+        console.log('DirectRedirectHosts Load Error:', e.message);
+        return DIRECT_REDIRECT_HOST_SUFFIXES;
+    }
+}
+
+async function sha256Hex(text) {
+    const data = new TextEncoder().encode(String(text || ''));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer)).map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function ensureRedirectNoticeDedupSchema(env) {
+    if (!env?.DB) return;
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS redirect_notice_dedup (location_hash TEXT PRIMARY KEY, location TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
+}
+
+async function claimRedirectNoticeLocation(env, location) {
+    if (!env?.DB || !location) return true;
+    try {
+        await ensureRedirectNoticeDedupSchema(env);
+        await env.DB.prepare(`DELETE FROM redirect_notice_dedup WHERE created_at < datetime('now', ?)`)
+            .bind(`-${REDIRECT_NOTICE_DEDUP_HOURS} hours`)
+            .run();
+        const locationHash = await sha256Hex(location);
+        const result = await env.DB.prepare(`
+            INSERT OR IGNORE INTO redirect_notice_dedup (location_hash, location, created_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        `).bind(locationHash, location).run();
+        return Number(result?.meta?.changes || 0) > 0;
+    } catch (e) {
+        console.log('Redirect Notice Dedup Error:', e.message);
+        return true;
+    }
+}
 
 // 作用：确保定时任务需要读取的表和字段存在。
 // 目的：避免首次部署后还没打开面板时，TG 日报因为缺少表结构直接失败。
@@ -3064,6 +3262,8 @@ function getTgNotifyChatId(env) {
 async function sendTgRedirectNotice(env, info) {
     const chatId = getTgNotifyChatId(env);
     if (!chatId) return null;
+    const claimed = await claimRedirectNoticeLocation(env, info.location);
+    if (!claimed) return null;
     const text = [
         '302 redirect detected',
         `prefix: ${info.prefix || '-'}`,
@@ -4074,6 +4274,73 @@ export default {
         // ==========================================
         // 2.5 数据库路由管理 API 
         // ==========================================
+        if (url.pathname === '/api/direct-redirect-hosts') {
+            if (!env.DB) return Response.json({
+                success: false,
+                error: "未绑定 DB"
+            }, {
+                status: 500
+            });
+            try {
+                await ensureDirectRedirectHostSchema(env);
+
+                if (request.method === 'GET') {
+                    const { results = [] } = await env.DB.prepare(`
+                        SELECT suffix, remark, enabled, created_at, updated_at
+                        FROM direct_redirect_hosts
+                        WHERE suffix != ?
+                        ORDER BY datetime(created_at) DESC, suffix ASC
+                    `).bind(DIRECT_REDIRECT_HOST_SEED_MARKER).all();
+                    return Response.json({
+                        success: true,
+                        hosts: results || []
+                    });
+                }
+
+                if (request.method === 'POST') {
+                    const data = await request.json();
+                    const suffix = normalizeDirectRedirectSuffix(data.suffix);
+                    const oldSuffix = data.oldSuffix ? normalizeDirectRedirectSuffix(data.oldSuffix) : suffix;
+                    const remark = String(data.remark || '').trim();
+                    const enabled = data.enabled === false || data.enabled === 0 || data.enabled === '0' ? 0 : 1;
+
+                    if (oldSuffix !== suffix) {
+                        await env.DB.prepare(`DELETE FROM direct_redirect_hosts WHERE suffix = ?`).bind(oldSuffix).run();
+                    }
+                    await env.DB.prepare(`
+                        INSERT INTO direct_redirect_hosts (suffix, remark, enabled, updated_at)
+                        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                        ON CONFLICT(suffix) DO UPDATE SET
+                            remark = excluded.remark,
+                            enabled = excluded.enabled,
+                            updated_at = CURRENT_TIMESTAMP
+                    `).bind(suffix, remark, enabled).run();
+                    return Response.json({
+                        success: true
+                    });
+                }
+
+                if (request.method === 'DELETE') {
+                    const suffix = normalizeDirectRedirectSuffix(url.searchParams.get('suffix'));
+                    await env.DB.prepare(`DELETE FROM direct_redirect_hosts WHERE suffix = ?`).bind(suffix).run();
+                    return Response.json({
+                        success: true
+                    });
+                }
+
+                return new Response("Method not allowed", {
+                    status: 405
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                }, {
+                    status: 400
+                });
+            }
+        }
+
         if (url.pathname === '/api/routes/reorder' && request.method === 'POST') {
             if (!env.DB) return Response.json({
                 success: false,
@@ -4564,7 +4831,7 @@ export default {
                 /(^|["'\s(])(?:\/img\/|\/emby\/Items\/[^"'\s)]+\/Images\/|\/Items\/[^"'\s)]+\/Images\/)/i.test(text);
         }
 
-        function isDirectCloudDriveRedirect(location, targetUrl) {
+        function isDirectCloudDriveRedirect(location, targetUrl, directRedirectHostSuffixes) {
             if (!location) return false;
             try {
                 if (location.startsWith('//')) {
@@ -4574,7 +4841,7 @@ export default {
                 if (!/^https?:\/\//i.test(location)) return false;
                 const parsed = new URL(location);
                 const host = parsed.hostname.toLowerCase();
-                return DIRECT_REDIRECT_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith('.' + suffix));
+                return directRedirectHostSuffixes.some(suffix => host === suffix || host.endsWith('.' + suffix));
             } catch (e) {
                 return false;
             }
@@ -4597,10 +4864,10 @@ export default {
 
         // 作用：把源站返回的重定向地址改写成代理域可继续访问的地址。
         // 目的：避免浏览器在 302/301 后直接跳离当前 Worker 或打到错误源站。
-        function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix) {
+        function rewriteRedirectLocation(location, targetUrl, targetOrigins, proxyOrigin, safePrefix, directRedirectHostSuffixes) {
             if (!location) return location;
             if (isDirectIpRedirect(location, targetUrl)) return location;
-            if (isDirectCloudDriveRedirect(location, targetUrl)) return location;
+            if (isDirectCloudDriveRedirect(location, targetUrl, directRedirectHostSuffixes)) return location;
             if (location.startsWith('//')) {
                 try {
                     const protocol = targetUrl ? targetUrl.protocol : new URL(targetOrigins[0]).protocol;
@@ -4871,7 +5138,8 @@ export default {
         // ==========================================
         if (enableProxy302 && [301, 302, 303, 307, 308].includes(finalResponse.status)) {
             const location = responseHeaders.get('Location');
-            const rewrittenLocation = rewriteRedirectLocation(location, finalTargetUrl, targetOrigins, proxyOrigin, safePrefix);
+            const directRedirectHostSuffixes = await getDirectRedirectHostSuffixes(env);
+            const rewrittenLocation = rewriteRedirectLocation(location, finalTargetUrl, targetOrigins, proxyOrigin, safePrefix, directRedirectHostSuffixes);
             if (rewrittenLocation !== location) {
                 responseHeaders.set('Location', rewrittenLocation);
             }
