@@ -1,6 +1,6 @@
-// VERSION: 2.4.5
+// VERSION: 2.4.6
 // 🟢 面板核心配置区 (放在最顶端方便修改)
-const CURRENT_VERSION = "2.4.5";
+const CURRENT_VERSION = "2.4.6";
 const DIRECT_REDIRECT_HOST_DEFAULTS = [
     { suffix: 'ctyunxs.cn', remark: '天翼云' },
     { suffix: '123pan.cn', remark: '123pan' },
@@ -524,7 +524,13 @@ const HTML_UI = `
                             <h2 style="margin:0; font-size:18px;">302 跳转记录</h2>
                             <div style="margin-top:6px; font-size:13px; color:var(--text-sec);">按 Location 去重，仅保留最近 10 条。</div>
                         </div>
-                        <button type="button" class="btn-submit" onclick="loadRedirect302Records()" style="background:#32ade6; padding: 8px 16px; font-size: 13px;">🔄 刷新记录</button>
+                        <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; cursor:pointer;">
+                                <input type="checkbox" id="redirect302TgNotify" class="ip-checkbox" checked onchange="saveRedirect302TgNotifySetting(this.checked)">
+                                TG通知
+                            </label>
+                            <button type="button" class="btn-submit" onclick="loadRedirect302Records()" style="background:#32ade6; padding: 8px 16px; font-size: 13px;">🔄 刷新记录</button>
+                        </div>
                     </div>
                     <div class="table-wrapper">
                         <table style="width:100%;">
@@ -1067,6 +1073,38 @@ const HTML_UI = `
                 }).join('');
             } catch (err) {
                 list.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#ff3b30; padding:20px;">读取失败: ' + escapeHtml(err.message) + '</td></tr>';
+            }
+        }
+
+        async function loadRedirect302TgNotifySetting() {
+            const checkbox = document.getElementById('redirect302TgNotify');
+            if (!checkbox) return;
+            try {
+                const res = await fetch('/api/redirect-302-tg-notify');
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || '读取失败');
+                checkbox.checked = data.enabled !== false;
+            } catch (err) {
+                showToast('❌ 读取 302 TG 通知开关失败: ' + err.message);
+            }
+        }
+
+        async function saveRedirect302TgNotifySetting(enabled) {
+            const checkbox = document.getElementById('redirect302TgNotify');
+            if (checkbox) checkbox.disabled = true;
+            try {
+                const res = await fetch('/api/redirect-302-tg-notify', {
+                    method: 'POST',
+                    body: JSON.stringify({ enabled })
+                });
+                const data = await res.json();
+                if (!data.success) throw new Error(data.error || '保存失败');
+                showToast(enabled ? '✅ 302 TG 通知已开启' : '✅ 302 TG 通知已关闭');
+            } catch (err) {
+                if (checkbox) checkbox.checked = !enabled;
+                showToast('❌ 保存 302 TG 通知开关失败: ' + err.message);
+            } finally {
+                if (checkbox) checkbox.disabled = false;
             }
         }
 
@@ -2312,6 +2350,7 @@ function renderWatchReportPanel(routes) {
         loadIcons().then(() => {
             loadDirectRedirectHosts();
             loadRedirect302Records();
+            loadRedirect302TgNotifySetting();
             load();
             loadDNS();
         });
@@ -3279,6 +3318,7 @@ const MAX_PROGRESS_INCREMENT_SECONDS = 120;
 const DIRECT_REDIRECT_HOST_SEEDED_KEY = 'direct_redirect_hosts_seeded';
 const DIRECT_REDIRECT_HOST_SEED_MARKER = '__seeded__';
 const REDIRECT_302_RECORD_LIMIT = 10;
+const REDIRECT_302_TG_NOTIFY_SETTING_KEY = 'tg_notify_enabled';
 
 function normalizeDirectRedirectSuffix(value) {
     let suffix = String(value || '').trim().toLowerCase();
@@ -3325,6 +3365,31 @@ async function sha256Hex(text) {
 async function ensureRedirect302RecordSchema(env) {
     if (!env?.DB) return;
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS redirect_302_records (location_hash TEXT PRIMARY KEY, prefix TEXT, status INTEGER DEFAULT 302, request_url TEXT, target_url TEXT, location TEXT NOT NULL, redirected_location TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
+}
+
+async function ensureRedirect302SettingSchema(env) {
+    if (!env?.DB) return;
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS redirect_302_settings (setting_name TEXT PRIMARY KEY, setting_value TEXT NOT NULL, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)`).run();
+}
+
+async function getRedirect302TgNotifyEnabled(env) {
+    if (!env?.DB) return true;
+    try {
+        await ensureRedirect302SettingSchema(env);
+        const row = await env.DB.prepare(`SELECT setting_value FROM redirect_302_settings WHERE setting_name = ?`).bind(REDIRECT_302_TG_NOTIFY_SETTING_KEY).first();
+        return !row || row.setting_value !== '0';
+    } catch (e) {
+        console.log('Redirect302 Setting Load Error:', e.message);
+        return true;
+    }
+}
+
+async function setRedirect302TgNotifyEnabled(env, enabled) {
+    if (!env?.DB) return;
+    await ensureRedirect302SettingSchema(env);
+    await env.DB.prepare(`INSERT INTO redirect_302_settings (setting_name, setting_value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(setting_name) DO UPDATE SET setting_value = excluded.setting_value, updated_at = CURRENT_TIMESTAMP`)
+        .bind(REDIRECT_302_TG_NOTIFY_SETTING_KEY, enabled ? '1' : '0')
+        .run();
 }
 
 async function recordRedirect302AndClaimNotice(env, info) {
@@ -3421,6 +3486,8 @@ function getTgNotifyChatId(env) {
 async function sendTgRedirectNotice(env, info) {
     const claimed = await recordRedirect302AndClaimNotice(env, info);
     if (!claimed) return null;
+    const tgNotifyEnabled = await getRedirect302TgNotifyEnabled(env);
+    if (!tgNotifyEnabled) return null;
     const chatId = getTgNotifyChatId(env);
     if (!chatId) return null;
     const text = [
@@ -4451,6 +4518,43 @@ export default {
                 return Response.json({
                     success: true,
                     records: results || []
+                });
+            } catch (e) {
+                return Response.json({
+                    success: false,
+                    error: e.message
+                }, {
+                    status: 500
+                });
+            }
+        }
+
+        if (url.pathname === '/api/redirect-302-tg-notify') {
+            if (!env.DB) return Response.json({
+                success: false,
+                error: "未绑定 DB"
+            }, {
+                status: 500
+            });
+            try {
+                if (request.method === 'GET') {
+                    const enabled = await getRedirect302TgNotifyEnabled(env);
+                    return Response.json({
+                        success: true,
+                        enabled
+                    });
+                }
+                if (request.method === 'POST') {
+                    const data = await request.json();
+                    const enabled = data.enabled !== false && data.enabled !== 0 && data.enabled !== '0';
+                    await setRedirect302TgNotifyEnabled(env, enabled);
+                    return Response.json({
+                        success: true,
+                        enabled
+                    });
+                }
+                return new Response("Method not allowed", {
+                    status: 405
                 });
             } catch (e) {
                 return Response.json({
